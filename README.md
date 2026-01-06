@@ -81,8 +81,10 @@ cf_ai_hackmatch/
 ### Live Deployment
 
 The application is currently deployed and accessible at:
-- **Frontend**: https://7166387a.hackmatch.pages.dev (or https://hackmatch.pages.dev)
+- **Frontend**: https://hackmatch.pages.dev (or https://24a5b151.hackmatch.pages.dev)
 - **Backend API**: https://cf_ai_hackmatch.aadhavmanimurugan.workers.dev
+
+Visit the frontend URL to start a brainstorming session!
 
 ### Deploy Backend (Worker + Durable Object)
 
