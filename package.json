@@ -1,0 +1,27 @@
+{
+  "name": "cf_ai_hackmatch",
+  "version": "1.0.0",
+  "description": "AI-Powered RAPID Brainstorming Platform for Hackathon Teams",
+  "main": "src/index.ts",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "build": "tsc",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "hackathon",
+    "brainstorming",
+    "ai",
+    "cloudflare",
+    "agents"
+  ],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260103.0",
+    "typescript": "^5.9.3",
+    "wrangler": "^4.54.0"
+  }
+}

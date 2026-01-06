@@ -1,0 +1,21 @@
+name = "cf_ai_hackmatch"
+main = "src/index.ts"
+compatibility_date = "2026-01-05"
+
+# Workers AI binding
+[ai]
+binding = "AI"
+
+# Durable Objects configuration
+[[durable_objects.bindings]]
+name = "HACKMATCH_AGENT"
+class_name = "HackMatchAgent"
+
+# SQLite migration
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["HackMatchAgent"]
+
+# Observability
+[observability]
+enabled = true
