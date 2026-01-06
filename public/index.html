@@ -302,7 +302,9 @@
           break;
 
         case 'stateUpdate':
+          console.log('Received stateUpdate:', msg.payload);
           if (msg.payload.currentStage) {
+            console.log('Updating stage from', currentStage, 'to', msg.payload.currentStage);
             currentStage = msg.payload.currentStage;
             updateStageProgress();
             updateStageUI();
@@ -381,7 +383,7 @@
             </p>
           </div>
 
-          <button onclick="saveContextAndProceed()" style="margin-top: 20px; font-size: 1.1em; padding: 15px 30px;">Start Brainstorming →</button>
+          <button id="startBrainstormBtn" onclick="saveContextAndProceed()" style="margin-top: 20px; font-size: 1.1em; padding: 15px 30px;">Start Brainstorming →</button>
         `;
       } else if (currentStage === 'A') {
         content.innerHTML = `
@@ -540,19 +542,31 @@
     }
 
     function saveContextAndProceed() {
+      console.log('saveContextAndProceed called');
+
+      // Disable button to prevent multiple clicks
+      const btn = document.getElementById('startBrainstormBtn');
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Starting...';
+      }
+
       const rulesInput = document.getElementById('hackathonRules');
       const challengesInput = document.getElementById('sponsorChallenges');
       const hoursInput = document.getElementById('timeHours');
 
-      const rules = rulesInput ? rulesInput.value : '';
-      const challenges = challengesInput ? challengesInput.value : '';
+      const rules = rulesInput ? rulesInput.value.trim() : '';
+      const challenges = challengesInput ? challengesInput.value.trim() : '';
       const hours = hoursInput ? hoursInput.value : '24';
 
-      // Send context as a chat message so everyone sees it
-      if (rules || challenges) {
-        const contextMessage = `📋 Hackathon Context:\nRules: ${rules || 'None specified'}\nChallenges: ${challenges || 'None specified'}\nTime: ${hours} hours`;
+      console.log('Context:', { rules, challenges, hours });
 
-        if (ws && ws.readyState === WebSocket.OPEN) {
+      // Always try to transition, but send context message first if provided
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        if (rules || challenges) {
+          const contextMessage = `📋 Hackathon Context:\nRules: ${rules || 'None specified'}\nChallenges: ${challenges || 'None specified'}\nTime: ${hours} hours`;
+
+          console.log('Sending context message');
           ws.send(JSON.stringify({
             type: 'sendMessage',
             payload: {
@@ -563,13 +577,21 @@
           }));
 
           // Wait a bit for message to send before transitioning
-          setTimeout(() => nextStage(), 500);
+          setTimeout(() => {
+            console.log('Calling nextStage after context send');
+            nextStage();
+          }, 500);
         } else {
-          alert('Not connected to server. Please refresh and try again.');
+          // No context entered, just proceed immediately
+          console.log('No context, proceeding directly');
+          nextStage();
         }
       } else {
-        // No context entered, just proceed
-        nextStage();
+        alert('Not connected to server. Please refresh and try again.');
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = 'Start Brainstorming →';
+        }
       }
     }
 
