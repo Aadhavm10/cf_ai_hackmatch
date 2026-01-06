@@ -17,10 +17,10 @@ HackMatch guides hackathon teams through the proven RAPID framework, helping the
 ## Technology Stack
 
 - **Backend**: Cloudflare Workers + Durable Objects using [Cloudflare Agent SDK](https://agents.cloudflare.com/)
-- **AI**: Workers AI (Llama 3.3)
-- **Frontend**: React + Vite + Zustand
+- **AI**: Workers AI (Llama 3.3-70b-instruct)
+- **Frontend**: Standalone HTML/JavaScript
 - **Database**: SQLite in Durable Objects
-- **Real-time**: WebSocket (via Agent SDK)
+- **Real-time**: WebSocket (via Durable Objects)
 
 ## Setup Instructions
 
@@ -39,27 +39,21 @@ HackMatch guides hackathon teams through the proven RAPID framework, helping the
    npm install
    ```
 
-2. **Install Frontend Dependencies**:
-   ```bash
-   cd frontend
-   npm install
-   cd ..
-   ```
-
-3. **Run Backend** (Terminal 1):
+2. **Run Backend** (Terminal 1):
    ```bash
    npm run dev
    ```
    Backend will be available at `http://localhost:8787`
 
-4. **Run Frontend** (Terminal 2):
+3. **Run Frontend** (Terminal 2):
    ```bash
-   cd frontend
-   npm run dev
+   cd public
+   python3 -m http.server 8080
+   # or: npx serve
    ```
-   Frontend will be available at `http://localhost:5173`
+   Frontend will be available at `http://localhost:8080`
 
-5. **Test with Multiple Users**:
+4. **Test with Multiple Users**:
    Open multiple browser windows/tabs to simulate a team collaborating in real-time.
 
 ## Project Structure
@@ -83,6 +77,12 @@ cf_ai_hackmatch/
 ```
 
 ## Deployment
+
+### Live Deployment
+
+The application is currently deployed and accessible at:
+- **Frontend**: https://7166387a.hackmatch.pages.dev (or https://hackmatch.pages.dev)
+- **Backend API**: https://cf_ai_hackmatch.aadhavmanimurugan.workers.dev
 
 ### Deploy Backend (Worker + Durable Object)
 
@@ -131,18 +131,22 @@ Then open http://localhost:8080 in your browser.
 
 ## Features
 
+✅ Team member profiles with skills & experience
+✅ AI-powered track validation
+✅ Experience-aware recommendations
+✅ Role allocation suggestions (Frontend, Backend, Database, Design)
+✅ Complexity adjustment based on team experience
 ✅ Real-time collaboration (WebSocket)
 ✅ AI-powered idea scoring
 ✅ Structured RAPID workflow
-✅ Drag-and-drop MVP canvas
 ✅ Export project summary
 ✅ Works on desktop and mobile
 
 ## Cloudflare Requirements Met
 
-- ✅ LLM: Workers AI (Llama 3.3)
-- ✅ Workflow: Cloudflare Workers + Durable Objects (Agent SDK)
-- ✅ User Input: Chat + idea submission forms
+- ✅ LLM: Workers AI (Llama 3.3-70b-instruct)
+- ✅ Workflow: Cloudflare Workers + Durable Objects
+- ✅ User Input: Chat + idea submission forms + team profiles
 - ✅ Memory/State: SQLite in Durable Objects
 - ✅ Repository prefix: cf_ai_
 - ✅ Documentation: README.md (this file)

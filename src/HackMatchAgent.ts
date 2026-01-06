@@ -4,6 +4,8 @@ import {
   feasibilityPrompt,
   techStackPrompt,
   mvpPrioritizationPrompt,
+  trackValidationPrompt,
+  roleAllocationPrompt,
 } from './ai/prompts.js';
 import type {
   RAPIDStage,
@@ -12,6 +14,8 @@ import type {
   Challenge,
   TechStack,
   AIFeasibilityScore,
+  TeamMember,
+  HackathonSetup,
 } from './types/rapid.js';
 
 export interface Env {
@@ -54,6 +58,7 @@ export class HackMatchAgent implements DurableObject {
         selected_challenges TEXT,
         winning_idea_id INTEGER,
         tech_stack TEXT,
+        setup_phase TEXT DEFAULT 'hackathon_info' CHECK (setup_phase IN ('hackathon_info', 'team_profiles', 'track_validation', 'complete')),
         created_at INTEGER NOT NULL,
         updated_at INTEGER NOT NULL
       )`,
@@ -112,6 +117,28 @@ export class HackMatchAgent implements DurableObject {
         prize REAL,
         created_at INTEGER NOT NULL
       )`,
+      `CREATE TABLE IF NOT EXISTS team_members (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id TEXT NOT NULL UNIQUE,
+        user_name TEXT NOT NULL,
+        skills TEXT NOT NULL,
+        experience_level TEXT NOT NULL CHECK (experience_level IN ('beginner', 'intermediate', 'advanced')),
+        preferred_role TEXT,
+        assigned_role TEXT,
+        joined_at INTEGER NOT NULL
+      )`,
+      `CREATE INDEX IF NOT EXISTS idx_team_members_user ON team_members(user_id)`,
+      `CREATE TABLE IF NOT EXISTS hackathon_setup (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        team_size INTEGER,
+        rules_text TEXT,
+        time_hours INTEGER DEFAULT 24,
+        selected_tracks TEXT,
+        track_validation TEXT,
+        profiles_complete INTEGER DEFAULT 0,
+        setup_complete INTEGER DEFAULT 0
+      )`,
+      `INSERT OR IGNORE INTO hackathon_setup (id) VALUES (1)`,
     ];
 
     for (const statement of schemaStatements) {
@@ -247,6 +274,43 @@ export class HackMatchAgent implements DurableObject {
 
         case 'updateChallenges':
           await this.updateChallenges(data.payload.challenges);
+          break;
+
+        case 'submitProfile':
+          await this.submitProfile(
+            data.payload.userId,
+            data.payload.userName,
+            data.payload.skills,
+            data.payload.experienceLevel,
+            data.payload.preferredRole
+          );
+          break;
+
+        case 'updateHackathonSetup':
+          await this.updateHackathonSetup(
+            data.payload.rulesText,
+            data.payload.timeHours,
+            data.payload.selectedTracks
+          );
+          break;
+
+        case 'requestTrackValidation':
+          await this.validateTracks();
+          break;
+
+        case 'requestRoleAllocation':
+          await this.allocateRoles(data.payload.winningIdeaId);
+          break;
+
+        case 'updateRoleAssignment':
+          await this.updateRoleAssignment(
+            data.payload.userId,
+            data.payload.assignedRole
+          );
+          break;
+
+        case 'completeSetup':
+          await this.completeSetupPhase();
           break;
 
         default:
@@ -405,7 +469,15 @@ export class HackMatchAgent implements DurableObject {
     };
 
     try {
-      const prompt = feasibilityPrompt(idea, 3, 24);
+      // Get hackathon setup for team size and time
+      const setup = await this.state.storage.sql
+        .exec('SELECT * FROM hackathon_setup WHERE id = 1')
+        .toArray();
+
+      const teamSize = setup.length > 0 && setup[0].team_size ? (setup[0].team_size as number) : 3;
+      const timeHours = setup.length > 0 && setup[0].time_hours ? (setup[0].time_hours as number) : 24;
+
+      const prompt = feasibilityPrompt(idea, teamSize, timeHours);
       const aiScore = await this.aiClient.generateJSON<AIFeasibilityScore>(prompt);
 
       await this.state.storage.sql.exec(
@@ -511,7 +583,20 @@ export class HackMatchAgent implements DurableObject {
     };
 
     try {
-      const mvpPrompt = mvpPrioritizationPrompt(idea, 3, 24);
+      // Get team members for experience-aware recommendations
+      const teamMembers = (await this.state.storage.sql
+        .exec('SELECT * FROM team_members')
+        .toArray()) as any[];
+
+      // Get hackathon setup for team size and time
+      const setup = await this.state.storage.sql
+        .exec('SELECT * FROM hackathon_setup WHERE id = 1')
+        .toArray();
+
+      const teamSize = setup.length > 0 && setup[0].team_size ? (setup[0].team_size as number) : 3;
+      const timeHours = setup.length > 0 && setup[0].time_hours ? (setup[0].time_hours as number) : 24;
+
+      const mvpPrompt = mvpPrioritizationPrompt(idea, teamSize, timeHours, teamMembers);
       const mvpSuggestion = await this.aiClient.generateJSON<{
         mustHave: string[];
         niceToHave: string[];
@@ -519,7 +604,7 @@ export class HackMatchAgent implements DurableObject {
         reasoning: string;
       }>(mvpPrompt);
 
-      const techPrompt = techStackPrompt(idea, 3, 24);
+      const techPrompt = techStackPrompt(idea, teamSize, timeHours, teamMembers);
       const techStack = await this.aiClient.generateJSON<TechStack>(techPrompt);
 
       await this.state.storage.sql.exec(
@@ -613,6 +698,247 @@ export class HackMatchAgent implements DurableObject {
       } catch (error) {
         console.error('Broadcast error:', error);
       }
+    });
+  }
+
+  /**
+   * Submit team member profile
+   */
+  private async submitProfile(
+    userId: string,
+    userName: string,
+    skills: string[],
+    experienceLevel: string,
+    preferredRole?: string
+  ) {
+    const joinedAt = Date.now();
+
+    await this.state.storage.sql.exec(
+      `INSERT OR REPLACE INTO team_members
+       (user_id, user_name, skills, experience_level, preferred_role, joined_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      userId,
+      userName,
+      JSON.stringify(skills),
+      experienceLevel,
+      preferredRole || null,
+      joinedAt
+    );
+
+    // Broadcast profile to all users
+    this.broadcast({
+      type: 'profileSubmitted',
+      payload: { userId, userName, skills, experienceLevel, preferredRole },
+    });
+
+    // Check if all profiles are complete
+    await this.checkProfileCompletion();
+  }
+
+  /**
+   * Update hackathon setup information
+   */
+  private async updateHackathonSetup(
+    rulesText: string,
+    timeHours: number,
+    selectedTracks: string[]
+  ) {
+    await this.state.storage.sql.exec(
+      `INSERT OR REPLACE INTO hackathon_setup (id, rules_text, time_hours, selected_tracks)
+       VALUES (1, ?, ?, ?)`,
+      rulesText,
+      timeHours,
+      JSON.stringify(selectedTracks)
+    );
+
+    // Update room_state setup phase
+    await this.state.storage.sql.exec(
+      `UPDATE room_state SET setup_phase = 'team_profiles' WHERE id = 1`
+    );
+
+    this.broadcast({
+      type: 'setupUpdated',
+      payload: { rulesText, timeHours, selectedTracks },
+    });
+  }
+
+  /**
+   * Validate track selections with AI
+   */
+  private async validateTracks() {
+    // Get team members and setup
+    const members = (await this.state.storage.sql
+      .exec('SELECT * FROM team_members')
+      .toArray()) as any[];
+
+    const setup = await this.state.storage.sql
+      .exec('SELECT * FROM hackathon_setup WHERE id = 1')
+      .toArray();
+
+    if (setup.length === 0 || members.length === 0) {
+      return;
+    }
+
+    const rulesText = setup[0].rules_text as string;
+    const selectedTracksJson = setup[0].selected_tracks as string;
+    const tracks = JSON.parse(selectedTracksJson);
+
+    // Call AI for validation
+    const aiClient = new WorkersAIClient(this.env.AI);
+    const prompt = trackValidationPrompt(tracks, members, rulesText);
+
+    try {
+      const validation = await aiClient.generateJSON<{
+        overallFit: string;
+        trackAnalysis: Array<{
+          trackName: string;
+          fitScore: number;
+          reasoning: string;
+          requiredSkills: string[];
+          teamCoverage: string;
+        }>;
+        recommendations: string;
+        alternativeTracks: string[];
+      }>(prompt);
+
+      // Store validation results
+      await this.state.storage.sql.exec(
+        `UPDATE hackathon_setup SET track_validation = ? WHERE id = 1`,
+        JSON.stringify(validation)
+      );
+
+      // Update room_state phase
+      await this.state.storage.sql.exec(
+        `UPDATE room_state SET setup_phase = 'complete' WHERE id = 1`
+      );
+
+      this.broadcast({
+        type: 'trackValidation',
+        payload: validation,
+      });
+    } catch (error) {
+      console.error('Track validation failed:', error);
+    }
+  }
+
+  /**
+   * Allocate roles using AI
+   */
+  private async allocateRoles(winningIdeaId?: number) {
+    const members = (await this.state.storage.sql
+      .exec('SELECT * FROM team_members')
+      .toArray()) as any[];
+
+    if (members.length === 0) return;
+
+    // Get winning idea if provided
+    let idea: Idea | undefined;
+    if (winningIdeaId) {
+      const ideas = await this.state.storage.sql
+        .exec('SELECT * FROM ideas WHERE id = ?', winningIdeaId)
+        .toArray();
+      if (ideas.length > 0) {
+        const row = ideas[0];
+        idea = {
+          id: row.id as number,
+          userId: row.user_id as string,
+          userName: row.user_name as string,
+          title: row.title as string,
+          description: row.description as string,
+          phase: row.phase as 'silent' | 'group',
+          createdAt: row.created_at as number,
+        };
+      }
+    }
+
+    // Call AI for role allocation
+    const aiClient = new WorkersAIClient(this.env.AI);
+    const prompt = roleAllocationPrompt(members, idea);
+
+    try {
+      const allocation = await aiClient.generateJSON<{
+        assignments: Array<{
+          userId: string;
+          userName: string;
+          assignedRole: string;
+          reasoning: string;
+          matchesPreference: boolean;
+        }>;
+        teamBalance: string;
+        suggestions: string;
+      }>(prompt);
+
+      // Update assigned roles in database
+      for (const assignment of allocation.assignments) {
+        await this.state.storage.sql.exec(
+          `UPDATE team_members SET assigned_role = ? WHERE user_id = ?`,
+          assignment.assignedRole,
+          assignment.userId
+        );
+      }
+
+      this.broadcast({
+        type: 'roleAllocation',
+        payload: allocation,
+      });
+    } catch (error) {
+      console.error('Role allocation failed:', error);
+    }
+  }
+
+  /**
+   * Update a member's role assignment (manual override)
+   */
+  private async updateRoleAssignment(userId: string, assignedRole: string) {
+    await this.state.storage.sql.exec(
+      `UPDATE team_members SET assigned_role = ? WHERE user_id = ?`,
+      assignedRole,
+      userId
+    );
+
+    this.broadcast({
+      type: 'roleUpdated',
+      payload: { userId, assignedRole },
+    });
+  }
+
+  /**
+   * Check if all team members have submitted profiles
+   */
+  private async checkProfileCompletion() {
+    const members = await this.state.storage.sql
+      .exec('SELECT COUNT(*) as count FROM team_members')
+      .toArray();
+
+    const memberCount = members[0].count as number;
+
+    // Update profiles_complete flag
+    await this.state.storage.sql.exec(
+      `UPDATE hackathon_setup SET profiles_complete = 1, team_size = ? WHERE id = 1`,
+      memberCount
+    );
+
+    this.broadcast({
+      type: 'profilesComplete',
+      payload: { teamSize: memberCount },
+    });
+  }
+
+  /**
+   * Complete setup phase and allow transition to Stage A
+   */
+  private async completeSetupPhase() {
+    await this.state.storage.sql.exec(
+      `UPDATE hackathon_setup SET setup_complete = 1 WHERE id = 1`
+    );
+
+    await this.state.storage.sql.exec(
+      `UPDATE room_state SET setup_phase = 'complete' WHERE id = 1`
+    );
+
+    this.broadcast({
+      type: 'setupComplete',
+      payload: { canProceed: true },
     });
   }
 }

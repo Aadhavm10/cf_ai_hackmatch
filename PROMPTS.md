@@ -302,22 +302,180 @@ Respond in valid JSON format (no markdown, no code blocks):
 
 **Example Usage:**
 - **Triggered:** Automatically during transition to Stage I (Identify MVP)
-- **Location:** `src/HackMatchAgent.ts:514` - `generateMVPSuggestions()` method
-- **Model:** `@cf/meta/llama-3.1-8b-instruct`
+- **Location:** `src/HackMatchAgent.ts` - `generateMVPSuggestions()` method
+- **Model:** `@cf/meta/llama-3.3-70b-instruct`
+
+---
+
+## 6. Track Validation Prompt
+
+**Purpose:** Validates if selected hackathon tracks are a good fit for the team's skills and experience.
+
+**Input Variables:**
+- `selectedTracks` - Array of track names selected by the team
+- `teamMembers` - Array of team member objects (with skills and experience level)
+- `hackathonRules` - Optional rules/constraints text
+
+**Prompt Template:**
+```
+You are a hackathon strategy advisor helping teams choose the right tracks.
+
+Team Composition:
+[For each member: name, skills, experience level]
+
+Selected Tracks: [track names]
+Hackathon Rules: [if provided]
+
+Analyze if the selected tracks are a good fit for this team's skills and experience.
+
+Respond in valid JSON format (no markdown, no code blocks):
+{
+  "overallFit": "excellent" | "good" | "fair" | "poor",
+  "trackAnalysis": [
+    {
+      "trackName": "<track name>",
+      "fitScore": <1-5>,
+      "reasoning": "<why this track fits or doesn't fit the team>",
+      "requiredSkills": ["<skill1>", "<skill2>"],
+      "teamCoverage": "<which team members have relevant skills>"
+    }
+  ],
+  "recommendations": "<overall advice on track selection>",
+  "alternativeTracks": ["<suggestion1>", "<suggestion2>"]
+}
+```
+
+**Example Output:**
+```json
+{
+  "overallFit": "good",
+  "trackAnalysis": [
+    {
+      "trackName": "Best Use of AI",
+      "fitScore": 3,
+      "reasoning": "Team has Python skills but no ML experience. Feasible with pre-trained models.",
+      "requiredSkills": ["Python", "ML/AI frameworks", "API integration"],
+      "teamCoverage": "Alice has Python, no one has ML experience"
+    }
+  ],
+  "recommendations": "Focus on using existing AI APIs rather than building models from scratch",
+  "alternativeTracks": ["Best Design", "Social Impact"]
+}
+```
+
+**Example Usage:**
+- **Triggered:** During Stage R (Review) when user requests track validation
+- **Location:** `src/HackMatchAgent.ts` - `validateTracks()` method
+- **Model:** `@cf/meta/llama-3.3-70b-instruct`
+
+---
+
+## 7. Role Allocation Prompt
+
+**Purpose:** Suggests role assignments (Frontend, Backend, Database, Design) based on team member profiles.
+
+**Input Variables:**
+- `teamMembers` - Array of team member objects (skills, experience, preferred role)
+- `winningIdea` - Optional winning idea object (if decided)
+
+**Prompt Template:**
+```
+You are a hackathon team coordinator assigning roles.
+
+Team Members:
+[For each member: name, ID, skills, experience level, preferred role]
+
+Project: [if decided, show title and description]
+
+Assign roles: Frontend, Backend, Database, Design
+
+Consider:
+1. Respect preferred roles when skills match
+2. Balance workload across team members
+3. Match experience levels to complexity
+4. Some members may take multiple roles if team is small
+
+Respond in valid JSON format (no markdown, no code blocks):
+{
+  "assignments": [
+    {
+      "userId": "<user_id>",
+      "userName": "<name>",
+      "assignedRole": "Frontend",
+      "reasoning": "<why this assignment makes sense>",
+      "matchesPreference": true
+    }
+  ],
+  "teamBalance": "<assessment of overall role distribution>",
+  "suggestions": "<any advice for collaboration>"
+}
+```
+
+**Example Output:**
+```json
+{
+  "assignments": [
+    {
+      "userId": "user123",
+      "userName": "Alice",
+      "assignedRole": "Frontend",
+      "reasoning": "Strong React skills match project needs, aligns with preference",
+      "matchesPreference": true
+    },
+    {
+      "userId": "user456",
+      "userName": "Bob",
+      "assignedRole": "Backend",
+      "reasoning": "Python and API experience perfect for backend, though prefers full-stack",
+      "matchesPreference": false
+    }
+  ],
+  "teamBalance": "Good coverage with clear separation of concerns",
+  "suggestions": "Consider pair programming sessions for knowledge sharing"
+}
+```
+
+**Example Usage:**
+- **Triggered:** During Stage I (Identify MVP) when user requests role allocation
+- **Location:** `src/HackMatchAgent.ts` - `allocateRoles()` method
+- **Model:** `@cf/meta/llama-3.3-70b-instruct`
+
+---
+
+## Experience-Aware Prompt Enhancements
+
+The following existing prompts have been enhanced to consider team experience levels:
+
+### Tech Stack Prompt (Enhanced)
+- Now accepts optional `teamMembers` parameter
+- Recommends tech stack matching team's actual skills
+- Adjusts complexity based on experience levels
+- Returns `learningRequired` and `complexityLevel` fields
+
+### MVP Prioritization Prompt (Enhanced)
+- Now accepts optional `teamMembers` parameter
+- Calculates average team experience level
+- Adjusts feature scope based on team capabilities
+- Returns `experienceAdjustments` field explaining simplifications/enhancements
+
+### Work Distribution Prompt (Enhanced)
+- Now requires `teamMembers` array instead of just team size
+- Assigns tasks based on assigned roles
+- Adjusts task complexity to individual experience levels
+- Returns `complexity` and `supportNeeded` for each assignment
 
 ---
 
 ## AI Model Configuration
 
-**Model Used:** `@cf/meta/llama-3.1-8b-instruct`
+**Model Used:** `@cf/meta/llama-3.3-70b-instruct`
 
 **Rationale for Model Choice:**
-- Fast inference time (~2-3 seconds per request)
-- Good balance of quality and speed for real-time brainstorming
+- More capable than previous 3.1 model for complex reasoning
+- Better at following JSON formatting instructions
 - Available on Cloudflare Workers AI
 - Handles JSON output reliably
-
-**Note:** We attempted to use Llama 3.3 70B as specified in the original plan, but verified availability on Workers AI and used Llama 3.1 8B for better performance and reliability.
+- Improved quality for experience-aware recommendations
 
 **Common Parameters:**
 ```typescript

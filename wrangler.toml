@@ -1,6 +1,7 @@
 name = "cf_ai_hackmatch"
 main = "src/index.ts"
 compatibility_date = "2026-01-05"
+pages_build_output_dir = "public"
 
 # Workers AI binding
 [ai]

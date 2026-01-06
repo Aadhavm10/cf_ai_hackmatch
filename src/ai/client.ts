@@ -15,7 +15,7 @@ export class WorkersAIClient {
    */
   async generate(prompt: string, maxTokens: number = 1024): Promise<string> {
     try {
-      const response = await this.ai.run('@cf/meta/llama-3.1-8b-instruct', {
+      const response = await this.ai.run('@cf/meta/llama-3.3-70b-instruct', {
         messages: [{ role: 'user', content: prompt }],
         max_tokens: maxTokens,
         temperature: 0.7,

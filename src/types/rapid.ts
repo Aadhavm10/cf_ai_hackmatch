@@ -70,3 +70,25 @@ export interface Message {
   timestamp: number;
   messageType: 'user' | 'ai' | 'system';
 }
+
+export interface TeamMember {
+  id: number;
+  userId: string;
+  userName: string;
+  skills: string; // JSON array
+  experienceLevel: 'beginner' | 'intermediate' | 'advanced';
+  preferredRole?: string;
+  assignedRole?: string;
+  joinedAt: number;
+}
+
+export interface HackathonSetup {
+  id: number;
+  teamSize?: number;
+  rulesText?: string;
+  timeHours: number;
+  selectedTracks?: string; // JSON array
+  trackValidation?: string; // JSON
+  profilesComplete: number;
+  setupComplete: number;
+}

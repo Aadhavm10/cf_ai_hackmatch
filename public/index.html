@@ -208,6 +208,10 @@
   </div>
 
   <script>
+    // Backend configuration - use deployed Worker URL
+    const BACKEND_URL = 'https://cf_ai_hackmatch.aadhavmanimurugan.workers.dev';
+    const WS_URL = 'wss://cf_ai_hackmatch.aadhavmanimurugan.workers.dev';
+
     let ws = null;
     let currentStage = 'R';
     let roomId = '';
@@ -227,7 +231,7 @@
 
       // Create room if no ID provided
       if (!roomInput) {
-        const res = await fetch('/api/create-room', { method: 'POST' });
+        const res = await fetch(`${BACKEND_URL}/api/create-room`, { method: 'POST' });
         const data = await res.json();
         roomId = data.roomId;
       } else {
@@ -238,8 +242,7 @@
     }
 
     function connectWebSocket() {
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const wsUrl = `${protocol}//${window.location.host}/api/room/${roomId}`;
+      const wsUrl = `${WS_URL}/api/room/${roomId}`;
 
       ws = new WebSocket(wsUrl);
 
