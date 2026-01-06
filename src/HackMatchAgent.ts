@@ -318,7 +318,14 @@ export class HackMatchAgent implements DurableObject {
       }
     } catch (error) {
       console.error('WebSocket message error:', error);
-      ws.send(JSON.stringify({ type: 'error', payload: { message: 'Invalid message' } }));
+      const errorMessage = error instanceof Error ? error.message : 'Invalid message';
+      ws.send(JSON.stringify({
+        type: 'error',
+        payload: {
+          message: errorMessage,
+          details: error instanceof Error ? error.stack : String(error)
+        }
+      }));
     }
   }
 

@@ -306,6 +306,11 @@
             updateStageUI();
           }
           break;
+
+        case 'error':
+          console.error('Server error:', msg.payload);
+          alert(`Error: ${msg.payload.message}\n\nDetails: ${msg.payload.details || 'No details available'}`);
+          break;
       }
     }
 
