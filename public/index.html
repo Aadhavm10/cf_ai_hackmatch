@@ -335,28 +335,95 @@
 
       document.getElementById('stageTitle').textContent = titles[currentStage];
 
-      if (currentStage === 'A') {
+      if (currentStage === 'R') {
+        content.innerHTML = `
+          <h3>Welcome to HackMatch!</h3>
+          <p>Get your team aligned and ready to brainstorm winning ideas.</p>
+
+          <div style="background: #f7fafc; padding: 20px; border-radius: 8px; margin: 20px 0;">
+            <h4>RAPID Framework Overview:</h4>
+            <ul style="margin-top: 10px; line-height: 1.8;">
+              <li><strong>Review</strong> (3 min): Set context and goals</li>
+              <li><strong>All Ideas</strong> (10 min): Silent + group brainstorming</li>
+              <li><strong>Prioritize</strong> (5 min): Score ideas on feasibility</li>
+              <li><strong>Identify MVP</strong> (5 min): Break down features</li>
+              <li><strong>Decide</strong> (2 min): Final vote and export</li>
+            </ul>
+          </div>
+
+          <div style="background: white; padding: 20px; border-radius: 8px; border: 2px solid #667eea;">
+            <h4>Hackathon Context</h4>
+            <p style="margin: 10px 0;">Use the team chat to discuss:</p>
+            <ul style="margin-left: 20px; line-height: 1.8;">
+              <li>What are the hackathon challenges/tracks?</li>
+              <li>How much time do we have?</li>
+              <li>What are our team's strengths?</li>
+            </ul>
+          </div>
+
+          <button onclick="nextStage()" style="margin-top: 20px; font-size: 1.1em; padding: 15px 30px;">Start Brainstorming →</button>
+        `;
+      } else if (currentStage === 'A') {
         content.innerHTML = `
           <h3>Submit Your Ideas</h3>
-          <input type="text" id="ideaTitle" placeholder="Idea title" />
-          <textarea id="ideaDescription" placeholder="Describe your idea..." rows="4"></textarea>
+          <input type="text" id="ideaTitle" placeholder="Idea title" style="width: 100%; padding: 10px; margin: 10px 0; border: 2px solid #e2e8f0; border-radius: 8px; font-size: 1em;" />
+          <textarea id="ideaDescription" placeholder="Describe your idea..." rows="4" style="width: 100%; padding: 10px; margin: 10px 0; border: 2px solid #e2e8f0; border-radius: 8px; font-size: 1em;"></textarea>
           <button onclick="submitIdea()">Submit Idea</button>
           <h3 style="margin-top: 30px;">Team Ideas</h3>
           <div class="ideas-list" id="ideasList"></div>
-          <button onclick="nextStage()">Next: Prioritize Ideas</button>
+          <button onclick="nextStage()" style="margin-top: 20px;">Next: Prioritize Ideas →</button>
         `;
       } else if (currentStage === 'P') {
         content.innerHTML = `
-          <h3>Score Ideas on Feasibility (1-5)</h3>
-          <div class="ideas-list" id="ideasList"></div>
-          <button onclick="nextStage()">Next: Identify MVP</button>
+          <h3>Review Team Ideas</h3>
+          <p>Discuss the ideas in chat and see which ones are most feasible for the hackathon timeframe.</p>
+          <div class="ideas-list" id="ideasList" style="margin: 20px 0;"></div>
+          <button onclick="nextStage()">Next: Identify MVP →</button>
         `;
         loadIdeasForScoring();
-      } else {
+      } else if (currentStage === 'I') {
         content.innerHTML = `
-          <p>Stage ${currentStage} - Implementation in progress</p>
-          <button onclick="nextStage()">Next Stage</button>
+          <h3>Identify MVP Features</h3>
+          <p>Break down your chosen idea into must-have features for the MVP.</p>
+
+          <div style="background: #f7fafc; padding: 20px; border-radius: 8px; margin: 20px 0;">
+            <h4>Discuss in chat:</h4>
+            <ul style="margin-top: 10px; line-height: 1.8;">
+              <li>What are the 3-5 core features?</li>
+              <li>What tech stack should we use?</li>
+              <li>How should we split the work?</li>
+            </ul>
+          </div>
+
+          <div class="ideas-list" id="ideasList"></div>
+          <button onclick="nextStage()" style="margin-top: 20px;">Next: Finalize Decision →</button>
         `;
+        loadIdeasForScoring();
+      } else if (currentStage === 'D') {
+        content.innerHTML = `
+          <h3>Final Decision & Next Steps</h3>
+          <p>Review your plan and get ready to build!</p>
+
+          <div style="background: #f0fff4; padding: 20px; border-radius: 8px; margin: 20px 0; border: 2px solid #48bb78;">
+            <h4>Your Hackathon Plan:</h4>
+            <div id="finalSummary" style="margin-top: 15px;">
+              <p><strong>Selected Ideas:</strong></p>
+              <div class="ideas-list" id="ideasList"></div>
+
+              <p style="margin-top: 20px;"><strong>Next Steps:</strong></p>
+              <ol style="margin-left: 20px; line-height: 1.8;">
+                <li>Set up your development environment</li>
+                <li>Create a GitHub repository</li>
+                <li>Divide tasks among team members</li>
+                <li>Start building your MVP!</li>
+              </ol>
+            </div>
+          </div>
+
+          <button onclick="exportSummary()" style="background: #48bb78;">Download Summary</button>
+          <button onclick="startOver()" style="background: #718096; margin-left: 10px;">Start New Session</button>
+        `;
+        loadIdeasForScoring();
       }
     }
 
@@ -449,6 +516,41 @@
       ws.send(JSON.stringify({
         type: 'transitionStage'
       }));
+    }
+
+    function exportSummary() {
+      const summary = `HackMatch Session Summary
+========================
+Room ID: ${roomId}
+Date: ${new Date().toLocaleDateString()}
+
+Team Members: ${userName} (and others in the room)
+
+Ideas Generated:
+${document.querySelectorAll('.idea-card').length} ideas discussed
+
+Next Steps:
+1. Set up your development environment
+2. Create a GitHub repository
+3. Divide tasks among team members
+4. Start building your MVP!
+
+Generated by HackMatch - AI-Powered RAPID Brainstorming
+`;
+
+      const blob = new Blob([summary], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `hackmatch-summary-${roomId}.txt`;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    function startOver() {
+      if (confirm('Start a new brainstorming session? This will create a new room.')) {
+        window.location.reload();
+      }
     }
   </script>
 </body>
