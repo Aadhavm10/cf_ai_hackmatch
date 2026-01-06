@@ -90,13 +90,44 @@ cf_ai_hackmatch/
 npm run deploy
 ```
 
+This will deploy:
+- The HackMatch Worker (handles HTTP/WebSocket routing)
+- The HackMatchAgent Durable Object (manages room state and AI)
+- SQLite database (automatic with Durable Objects)
+- Workers AI integration (automatic)
+
 ### Deploy Frontend (Cloudflare Pages)
 
+Option 1 - Using Wrangler:
 ```bash
-cd frontend
-npm run build
-npx wrangler pages deploy dist
+npx wrangler pages deploy public
 ```
+
+Option 2 - Via Cloudflare Dashboard:
+1. Go to Cloudflare Dashboard → Pages
+2. Create new project
+3. Upload the `public/` directory
+4. Deploy
+
+The frontend at `public/index.html` is a complete interactive demo that connects to the deployed Worker.
+
+### Testing Locally
+
+Terminal 1 - Start the Worker:
+```bash
+npm run dev
+```
+
+Terminal 2 - Serve the frontend:
+```bash
+cd public
+python3 -m http.server 8080
+# or: npx serve
+```
+
+Then open http://localhost:8080 in your browser.
+
+**Note:** When testing locally, the WebSocket will connect to `localhost:8787` (the wrangler dev server).
 
 ## Features
 
