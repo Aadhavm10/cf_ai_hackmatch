@@ -313,6 +313,10 @@ export class HackMatchAgent implements DurableObject {
           await this.completeSetupPhase();
           break;
 
+        case 'resetToStageR':
+          await this.resetToStageR();
+          break;
+
         default:
           console.log('Unknown message type:', data.type);
       }
@@ -532,8 +536,10 @@ export class HackMatchAgent implements DurableObject {
     const stages: RAPIDStage[] = ['R', 'A', 'P', 'I', 'D'];
     const currentIndex = stages.indexOf(state.currentStage as RAPIDStage);
 
+    // If already at final stage, just return without error
     if (currentIndex === stages.length - 1) {
-      throw new Error('Already at final stage');
+      console.log('Already at final stage D');
+      return;
     }
 
     const nextStage = stages[currentIndex + 1];
@@ -946,6 +952,21 @@ export class HackMatchAgent implements DurableObject {
     this.broadcast({
       type: 'setupComplete',
       payload: { canProceed: true },
+    });
+  }
+
+  /**
+   * Reset room to Stage R (Review)
+   */
+  private async resetToStageR() {
+    await this.state.storage.sql.exec(
+      `UPDATE room_state SET current_stage = 'R', updated_at = ? WHERE id = 1`,
+      Date.now()
+    );
+
+    this.broadcast({
+      type: 'stateUpdate',
+      payload: { currentStage: 'R' },
     });
   }
 }
