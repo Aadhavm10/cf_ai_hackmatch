@@ -256,6 +256,7 @@
 
       ws.onmessage = (event) => {
         const msg = JSON.parse(event.data);
+        console.log('Received message:', msg);
         handleMessage(msg);
       };
 
@@ -500,16 +501,21 @@
 
       if (!content) return;
 
-      ws.send(JSON.stringify({
-        type: 'sendMessage',
-        payload: {
-          userId,
-          userName,
-          content
-        }
-      }));
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        console.log('Sending message:', content);
+        ws.send(JSON.stringify({
+          type: 'sendMessage',
+          payload: {
+            userId,
+            userName,
+            content
+          }
+        }));
 
-      input.value = '';
+        input.value = '';
+      } else {
+        alert('Not connected to server. Please refresh.');
+      }
     }
 
     function displayMessage(msg) {
@@ -527,32 +533,48 @@
     }
 
     function saveContextAndProceed() {
-      const rules = document.getElementById('hackathonRules')?.value || '';
-      const challenges = document.getElementById('sponsorChallenges')?.value || '';
-      const hours = document.getElementById('timeHours')?.value || '24';
+      const rulesInput = document.getElementById('hackathonRules');
+      const challengesInput = document.getElementById('sponsorChallenges');
+      const hoursInput = document.getElementById('timeHours');
+
+      const rules = rulesInput ? rulesInput.value : '';
+      const challenges = challengesInput ? challengesInput.value : '';
+      const hours = hoursInput ? hoursInput.value : '24';
 
       // Send context as a chat message so everyone sees it
       if (rules || challenges) {
-        const contextMessage = `📋 Hackathon Context:\n${rules ? `Rules: ${rules}\n` : ''}${challenges ? `Challenges: ${challenges}\n` : ''}Time: ${hours} hours`;
+        const contextMessage = `📋 Hackathon Context:\nRules: ${rules || 'None specified'}\nChallenges: ${challenges || 'None specified'}\nTime: ${hours} hours`;
 
-        ws.send(JSON.stringify({
-          type: 'sendMessage',
-          payload: {
-            userId,
-            userName: 'System',
-            content: contextMessage
-          }
-        }));
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({
+            type: 'sendMessage',
+            payload: {
+              userId: userId,
+              userName: 'System',
+              content: contextMessage
+            }
+          }));
+
+          // Wait a bit for message to send before transitioning
+          setTimeout(() => nextStage(), 500);
+        } else {
+          alert('Not connected to server. Please refresh and try again.');
+        }
+      } else {
+        // No context entered, just proceed
+        nextStage();
       }
-
-      // Proceed to next stage
-      nextStage();
     }
 
     function nextStage() {
-      ws.send(JSON.stringify({
-        type: 'transitionStage'
-      }));
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        console.log('Transitioning to next stage from:', currentStage);
+        ws.send(JSON.stringify({
+          type: 'transitionStage'
+        }));
+      } else {
+        alert('Not connected to server. Please refresh.');
+      }
     }
 
     function exportSummary() {
