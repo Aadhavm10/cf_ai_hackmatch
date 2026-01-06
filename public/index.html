@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HackMatch - AI-Powered RAPID Brainstorming</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      padding: 20px;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      background: white;
+      border-radius: 16px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+      overflow: hidden;
+    }
+
+    header {
+      background: #1a1a2e;
+      color: white;
+      padding: 30px;
+      text-align: center;
+    }
+
+    h1 {
+      font-size: 2.5em;
+      margin-bottom: 10px;
+    }
+
+    .tagline {
+      color: #a0aec0;
+      font-size: 1.1em;
+    }
+
+    .rapid-progress {
+      display: flex;
+      justify-content: space-around;
+      padding: 20px;
+      background: #f7fafc;
+      border-bottom: 2px solid #e2e8f0;
+    }
+
+    .stage {
+      text-align: center;
+      padding: 10px 20px;
+      border-radius: 8px;
+      transition: all 0.3s;
+    }
+
+    .stage.active {
+      background: #667eea;
+      color: white;
+      transform: scale(1.1);
+    }
+
+    .stage.completed {
+      background: #48bb78;
+      color: white;
+    }
+
+    .content {
+      display: grid;
+      grid-template-columns: 2fr 1fr;
+      gap: 20px;
+      padding: 30px;
+    }
+
+    .main-area {
+      background: #f7fafc;
+      padding: 20px;
+      border-radius: 8px;
+    }
+
+    .sidebar {
+      background: #edf2f7;
+      padding: 20px;
+      border-radius: 8px;
+    }
+
+    h2 {
+      margin-bottom: 20px;
+      color: #2d3748;
+    }
+
+    input, textarea, button {
+      width: 100%;
+      padding: 12px;
+      margin-bottom: 10px;
+      border: 2px solid #e2e8f0;
+      border-radius: 8px;
+      font-size: 1em;
+    }
+
+    button {
+      background: #667eea;
+      color: white;
+      border: none;
+      cursor: pointer;
+      font-weight: 600;
+      transition: background 0.3s;
+    }
+
+    button:hover {
+      background: #5a67d8;
+    }
+
+    button:disabled {
+      background: #cbd5e0;
+      cursor: not-allowed;
+    }
+
+    .idea-card, .message {
+      background: white;
+      padding: 15px;
+      margin-bottom: 10px;
+      border-radius: 8px;
+      border-left: 4px solid #667eea;
+    }
+
+    .message {
+      border-left-color: #48bb78;
+    }
+
+    .ai-suggestion {
+      background: #fff5f5;
+      border-left-color: #f56565;
+    }
+
+    .status {
+      text-align: center;
+      padding: 10px;
+      background: #edf2f7;
+      border-radius: 8px;
+      margin-bottom: 20px;
+    }
+
+    .connected { color: #48bb78; }
+    .disconnected { color: #f56565; }
+
+    .ideas-list, .chat-messages {
+      max-height: 400px;
+      overflow-y: auto;
+    }
+
+    small {
+      color: #718096;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>HackMatch</h1>
+      <p class="tagline">AI-Powered RAPID Brainstorming Platform</p>
+    </header>
+
+    <div class="rapid-progress">
+      <div class="stage" data-stage="R">
+        <strong>R</strong><br>Review
+      </div>
+      <div class="stage" data-stage="A">
+        <strong>A</strong><br>Ideas
+      </div>
+      <div class="stage" data-stage="P">
+        <strong>P</strong><br>Prioritize
+      </div>
+      <div class="stage" data-stage="I">
+        <strong>I</strong><br>MVP
+      </div>
+      <div class="stage" data-stage="D">
+        <strong>D</strong><br>Decide
+      </div>
+    </div>
+
+    <div id="setup" style="padding: 30px; text-align: center;">
+      <h2>Join or Create a Room</h2>
+      <input type="text" id="roomId" placeholder="Enter room ID (leave empty to create new)" />
+      <input type="text" id="userName" placeholder="Your name" required />
+      <button onclick="joinRoom()">Join Room</button>
+      <div class="status">
+        <span id="status" class="disconnected">Not connected</span>
+      </div>
+    </div>
+
+    <div id="app" style="display: none;">
+      <div class="content">
+        <div class="main-area">
+          <h2 id="stageTitle">Current Stage</h2>
+          <div id="stageContent"></div>
+        </div>
+
+        <div class="sidebar">
+          <h2>Team Chat</h2>
+          <div class="chat-messages" id="chatMessages"></div>
+          <input type="text" id="chatInput" placeholder="Type a message..." onkeypress="if(event.key==='Enter') sendMessage()" />
+          <button onclick="sendMessage()">Send</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let ws = null;
+    let currentStage = 'R';
+    let roomId = '';
+    let userId = Math.random().toString(36).substr(2, 9);
+    let userName = '';
+
+    async function joinRoom() {
+      const roomInput = document.getElementById('roomId').value.trim();
+      const nameInput = document.getElementById('userName').value.trim();
+
+      if (!nameInput) {
+        alert('Please enter your name');
+        return;
+      }
+
+      userName = nameInput;
+
+      // Create room if no ID provided
+      if (!roomInput) {
+        const res = await fetch('/api/create-room', { method: 'POST' });
+        const data = await res.json();
+        roomId = data.roomId;
+      } else {
+        roomId = roomInput;
+      }
+
+      connectWebSocket();
+    }
+
+    function connectWebSocket() {
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const wsUrl = `${protocol}//${window.location.host}/api/room/${roomId}`;
+
+      ws = new WebSocket(wsUrl);
+
+      ws.onopen = () => {
+        document.getElementById('status').textContent = `Connected to room: ${roomId}`;
+        document.getElementById('status').className = 'connected';
+        document.getElementById('setup').style.display = 'none';
+        document.getElementById('app').style.display = 'block';
+        updateStageUI();
+      };
+
+      ws.onmessage = (event) => {
+        const msg = JSON.parse(event.data);
+        handleMessage(msg);
+      };
+
+      ws.onclose = () => {
+        document.getElementById('status').textContent = 'Disconnected';
+        document.getElementById('status').className = 'disconnected';
+      };
+
+      ws.onerror = (error) => {
+        console.error('WebSocket error:', error);
+        alert('Connection error. Please try again.');
+      };
+    }
+
+    function handleMessage(msg) {
+      switch (msg.type) {
+        case 'initialState':
+          currentStage = msg.payload.currentStage;
+          updateStageProgress();
+          updateStageUI();
+          // Load ideas
+          if (msg.payload.ideas) {
+            msg.payload.ideas.forEach(idea => displayIdea(idea));
+          }
+          // Load messages
+          if (msg.payload.messages) {
+            msg.payload.messages.forEach(m => displayMessage(m));
+          }
+          break;
+
+        case 'message':
+          displayMessage(msg.payload);
+          break;
+
+        case 'idea':
+          displayIdea(msg.payload);
+          break;
+
+        case 'aiSuggestion':
+          displayAISuggestion(msg.payload);
+          break;
+
+        case 'stateUpdate':
+          if (msg.payload.currentStage) {
+            currentStage = msg.payload.currentStage;
+            updateStageProgress();
+            updateStageUI();
+          }
+          break;
+      }
+    }
+
+    function updateStageProgress() {
+      const stages = document.querySelectorAll('.stage');
+      const stageOrder = ['R', 'A', 'P', 'I', 'D'];
+      const currentIndex = stageOrder.indexOf(currentStage);
+
+      stages.forEach((stage, index) => {
+        stage.classList.remove('active', 'completed');
+        if (index < currentIndex) {
+          stage.classList.add('completed');
+        } else if (index === currentIndex) {
+          stage.classList.add('active');
+        }
+      });
+    }
+
+    function updateStageUI() {
+      const content = document.getElementById('stageContent');
+      const titles = {
+        'R': 'Review Challenges',
+        'A': 'All Ideas Welcome',
+        'P': 'Prioritize Ideas',
+        'I': 'Identify MVP',
+        'D': 'Decide & Export'
+      };
+
+      document.getElementById('stageTitle').textContent = titles[currentStage];
+
+      if (currentStage === 'A') {
+        content.innerHTML = `
+          <h3>Submit Your Ideas</h3>
+          <input type="text" id="ideaTitle" placeholder="Idea title" />
+          <textarea id="ideaDescription" placeholder="Describe your idea..." rows="4"></textarea>
+          <button onclick="submitIdea()">Submit Idea</button>
+          <h3 style="margin-top: 30px;">Team Ideas</h3>
+          <div class="ideas-list" id="ideasList"></div>
+          <button onclick="nextStage()">Next: Prioritize Ideas</button>
+        `;
+      } else if (currentStage === 'P') {
+        content.innerHTML = `
+          <h3>Score Ideas on Feasibility (1-5)</h3>
+          <div class="ideas-list" id="ideasList"></div>
+          <button onclick="nextStage()">Next: Identify MVP</button>
+        `;
+        loadIdeasForScoring();
+      } else {
+        content.innerHTML = `
+          <p>Stage ${currentStage} - Implementation in progress</p>
+          <button onclick="nextStage()">Next Stage</button>
+        `;
+      }
+    }
+
+    function submitIdea() {
+      const title = document.getElementById('ideaTitle').value.trim();
+      const description = document.getElementById('ideaDescription').value.trim();
+
+      if (!title || !description) {
+        alert('Please fill in both title and description');
+        return;
+      }
+
+      ws.send(JSON.stringify({
+        type: 'submitIdea',
+        payload: {
+          userId,
+          userName,
+          title,
+          description,
+          phase: 'group'
+        }
+      }));
+
+      document.getElementById('ideaTitle').value = '';
+      document.getElementById('ideaDescription').value = '';
+    }
+
+    function displayIdea(idea) {
+      const list = document.getElementById('ideasList');
+      if (!list) return;
+
+      const card = document.createElement('div');
+      card.className = 'idea-card';
+      card.innerHTML = `
+        <strong>${idea.title}</strong>
+        <p>${idea.description}</p>
+        <small>by ${idea.userName}</small>
+      `;
+      list.appendChild(card);
+    }
+
+    function loadIdeasForScoring() {
+      // Ideas will be loaded from initial state
+    }
+
+    function displayAISuggestion(suggestion) {
+      const list = document.getElementById('ideasList');
+      if (!list) return;
+
+      const card = document.createElement('div');
+      card.className = 'idea-card ai-suggestion';
+      card.innerHTML = `
+        <strong>AI Suggestion: ${suggestion.type}</strong>
+        <pre>${JSON.stringify(suggestion.data, null, 2)}</pre>
+      `;
+      list.appendChild(card);
+    }
+
+    function sendMessage() {
+      const input = document.getElementById('chatInput');
+      const content = input.value.trim();
+
+      if (!content) return;
+
+      ws.send(JSON.stringify({
+        type: 'sendMessage',
+        payload: {
+          userId,
+          userName,
+          content
+        }
+      }));
+
+      input.value = '';
+    }
+
+    function displayMessage(msg) {
+      const messages = document.getElementById('chatMessages');
+      const div = document.createElement('div');
+      div.className = 'message';
+      div.innerHTML = `
+        <strong>${msg.userName}</strong>
+        <p>${msg.content}</p>
+      `;
+      messages.appendChild(div);
+      messages.scrollTop = messages.scrollHeight;
+    }
+
+    function nextStage() {
+      ws.send(JSON.stringify({
+        type: 'transitionStage'
+      }));
+    }
+  </script>
+</body>
+</html>

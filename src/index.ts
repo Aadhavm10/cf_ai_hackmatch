@@ -70,9 +70,40 @@ export default {
       return stub.fetch(request);
     }
 
+    // Serve frontend HTML for root path
+    if (url.pathname === '/' || url.pathname === '/index.html') {
+      return new Response(HTML_CONTENT, {
+        headers: {
+          'Content-Type': 'text/html',
+          ...corsHeaders,
+        },
+      });
+    }
+
     // Default response
     return new Response('HackMatch API - Use /api/create-room to create a room', {
       headers: { 'Content-Type': 'text/plain', ...corsHeaders },
     });
   },
 };
+
+// Embedded HTML content (simplified for demo)
+const HTML_CONTENT = `<!DOCTYPE html>
+<html>
+<head>
+  <title>HackMatch</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body>
+  <h1>HackMatch - AI-Powered RAPID Brainstorming</h1>
+  <p>For the full demo, please deploy the frontend from the public/ directory to Cloudflare Pages.</p>
+  <p>API endpoints:</p>
+  <ul>
+    <li>POST /api/create-room - Create a new brainstorming room</li>
+    <li>WS /api/room/:roomId - WebSocket connection to room</li>
+    <li>GET /health - Health check</li>
+  </ul>
+  <p>See <a href="https://github.com/yourusername/cf_ai_hackmatch">README.md</a> for full documentation.</p>
+</body>
+</html>`;
