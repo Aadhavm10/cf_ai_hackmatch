@@ -200,30 +200,33 @@ export class HackMatchAgent implements DurableObject {
   /**
    * Handle WebSocket connection
    */
-  private handleWebSocket(request: Request): Response {
+  private async handleWebSocket(request: Request): Promise<Response> {
     const pair = new WebSocketPair();
     const [client, server] = Object.values(pair);
 
+    // Accept the WebSocket with Durable Objects runtime
     this.state.acceptWebSocket(server);
     this.sessions.add(server);
 
-    // Send initial state to new client
-    server.addEventListener('open', async () => {
-      const state = await this.getRoomState();
-      const ideas = await this.getIdeas();
-      const messages = await this.getMessages();
+    console.log('[BACKEND] WebSocket accepted, sessions count:', this.sessions.size);
 
-      server.send(
-        JSON.stringify({
-          type: 'initialState',
-          payload: {
-            ...state,
-            ideas,
-            messages,
-          },
-        })
-      );
-    });
+    // Send initial state immediately (synchronously after acceptance)
+    // This must happen before returning the response to ensure the client receives it
+    const state = await this.getRoomState();
+    const ideas = await this.getIdeas();
+    const messages = await this.getMessages();
+
+    console.log('[BACKEND] Sending initialState to new client');
+    server.send(
+      JSON.stringify({
+        type: 'initialState',
+        payload: {
+          ...state,
+          ideas,
+          messages,
+        },
+      })
+    );
 
     return new Response(null, {
       status: 101,
