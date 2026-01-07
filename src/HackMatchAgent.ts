@@ -573,11 +573,18 @@ export class HackMatchAgent implements DurableObject {
     );
     console.log('[BACKEND] Database updated successfully');
 
+    // Get ideas to include in state update (needed for Stage P and beyond)
+    const ideas = await this.getIdeas();
+    console.log('[BACKEND] Fetched', ideas.length, 'ideas for state update');
+
     // Broadcast to all WebSocket clients
     console.log('[BACKEND] Broadcasting stateUpdate to all clients');
     this.broadcast({
       type: 'stateUpdate',
-      payload: { currentStage: nextStage },
+      payload: {
+        currentStage: nextStage,
+        ideas: ideas  // Include ideas so frontend has them in all stages
+      },
     });
     console.log('[BACKEND] Broadcast complete');
 

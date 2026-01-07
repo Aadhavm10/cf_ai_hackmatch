@@ -307,6 +307,15 @@
 
         case 'idea':
           displayIdea(msg.payload);
+          // Add to global ideas array so it persists across stages
+          if (!window.currentIdeas) {
+            window.currentIdeas = [];
+          }
+          // Only add if not already present (avoid duplicates)
+          if (!window.currentIdeas.find(i => i.id === msg.payload.id)) {
+            window.currentIdeas.push(msg.payload);
+            console.log('[FRONTEND] Added idea to currentIdeas. Total:', window.currentIdeas.length);
+          }
           break;
 
         case 'aiSuggestion':
@@ -326,6 +335,13 @@
             }
 
             currentStage = msg.payload.currentStage;
+
+            // Update ideas if included in payload (important for Stage P and beyond)
+            if (msg.payload.ideas) {
+              console.log('[FRONTEND] Updating ideas from stateUpdate:', msg.payload.ideas.length, 'ideas');
+              window.currentIdeas = msg.payload.ideas;
+            }
+
             updateStageProgress();
             updateStageUI();
 
