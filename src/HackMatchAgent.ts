@@ -268,6 +268,11 @@ export class HackMatchAgent implements DurableObject {
           );
           break;
 
+        case 'requestAIScore':
+          console.log('[BACKEND] Received requestAIScore for idea', data.payload.ideaId);
+          await this.scoreIdeaWithAI(data.payload.ideaId);
+          break;
+
         case 'transitionStage':
           console.log('[BACKEND] ===== RECEIVED transitionStage MESSAGE =====');
           console.log('[BACKEND] Current sessions count:', this.sessions.size);

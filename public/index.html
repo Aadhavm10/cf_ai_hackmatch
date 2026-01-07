@@ -281,15 +281,22 @@
     function handleMessage(msg) {
       switch (msg.type) {
         case 'initialState':
+          console.log('[FRONTEND] Received initialState');
           currentStage = msg.payload.currentStage;
+
+          // Store ideas globally for use in other stages
+          window.currentIdeas = msg.payload.ideas || [];
+
           updateStageProgress();
-          updateStageUI();
-          // Load ideas
+          updateStageUI();  // Render UI first - this creates the empty divs
+
+          // NOW append ideas and messages (after UI is rendered)
           if (msg.payload.ideas) {
+            console.log('[FRONTEND] Loading', msg.payload.ideas.length, 'ideas');
             msg.payload.ideas.forEach(idea => displayIdea(idea));
           }
-          // Load messages
           if (msg.payload.messages) {
+            console.log('[FRONTEND] Loading', msg.payload.messages.length, 'messages');
             msg.payload.messages.forEach(m => displayMessage(m));
           }
           break;
@@ -412,9 +419,10 @@
         `;
       } else if (currentStage === 'P') {
         content.innerHTML = `
-          <h3>Review Team Ideas</h3>
-          <p>Discuss the ideas in chat and see which ones are most feasible for the hackathon timeframe.</p>
+          <h3>Prioritize Ideas</h3>
+          <p>Score each idea on feasibility (1-5 stars). AI will provide objective scoring too.</p>
           <div class="ideas-list" id="ideasList" style="margin: 20px 0;"></div>
+          <button onclick="requestAIScoring()" style="margin: 20px 0; background: #805ad5;">Get AI Feasibility Scores</button>
           <button onclick="nextStage()">Next: Identify MVP →</button>
         `;
         loadIdeasForScoring();
@@ -503,7 +511,35 @@
     }
 
     function loadIdeasForScoring() {
-      // Ideas will be loaded from initial state
+      const list = document.getElementById('ideasList');
+      if (!list) return;
+
+      console.log('[FRONTEND] Loading ideas for scoring. Total ideas:', window.currentIdeas ? window.currentIdeas.length : 0);
+
+      // Get ideas from global state
+      if (window.currentIdeas && window.currentIdeas.length > 0) {
+        window.currentIdeas.forEach(idea => {
+          const card = document.createElement('div');
+          card.className = 'idea-card';
+          card.innerHTML = `
+            <strong>${idea.title}</strong>
+            <p>${idea.description}</p>
+            <small>by ${idea.userName}</small>
+            <div class="scoring" style="margin-top: 10px;">
+              <strong>Your Score:</strong>
+              <button onclick="scoreIdea(${idea.id}, 1)" style="padding: 5px 10px; margin: 2px;">⭐</button>
+              <button onclick="scoreIdea(${idea.id}, 2)" style="padding: 5px 10px; margin: 2px;">⭐⭐</button>
+              <button onclick="scoreIdea(${idea.id}, 3)" style="padding: 5px 10px; margin: 2px;">⭐⭐⭐</button>
+              <button onclick="scoreIdea(${idea.id}, 4)" style="padding: 5px 10px; margin: 2px;">⭐⭐⭐⭐</button>
+              <button onclick="scoreIdea(${idea.id}, 5)" style="padding: 5px 10px; margin: 2px;">⭐⭐⭐⭐⭐</button>
+            </div>
+            <div id="score-${idea.id}" style="margin-top: 5px; font-weight: bold; color: #48bb78;"></div>
+          `;
+          list.appendChild(card);
+        });
+      } else {
+        list.innerHTML = '<p style="color: #718096;">No ideas submitted yet. Go back to Stage A to add ideas!</p>';
+      }
     }
 
     function displayAISuggestion(suggestion) {
@@ -517,6 +553,52 @@
         <pre>${JSON.stringify(suggestion.data, null, 2)}</pre>
       `;
       list.appendChild(card);
+    }
+
+    function scoreIdea(ideaId, score) {
+      console.log('[FRONTEND] Scoring idea', ideaId, 'with score', score);
+
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({
+          type: 'scoreIdea',
+          payload: {
+            userId,
+            ideaId,
+            criterion: 'feasibility',
+            score
+          }
+        }));
+
+        // Update UI immediately
+        const scoreDiv = document.getElementById(`score-${ideaId}`);
+        if (scoreDiv) {
+          scoreDiv.textContent = `✓ Your score: ${score}/5`;
+        }
+      } else {
+        alert('Not connected to server. Please refresh.');
+      }
+    }
+
+    function requestAIScoring() {
+      console.log('[FRONTEND] Requesting AI scoring for all ideas');
+
+      if (!window.currentIdeas || window.currentIdeas.length === 0) {
+        alert('No ideas to score!');
+        return;
+      }
+
+      // Request AI to score all ideas
+      window.currentIdeas.forEach(idea => {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          console.log('[FRONTEND] Requesting AI score for idea', idea.id);
+          ws.send(JSON.stringify({
+            type: 'requestAIScore',
+            payload: { ideaId: idea.id }
+          }));
+        }
+      });
+
+      alert(`Requesting AI scoring for ${window.currentIdeas.length} ideas. Check chat for results!`);
     }
 
     function sendMessage() {
@@ -644,15 +726,28 @@
     }
 
     function exportSummary() {
+      let ideasText = '';
+      if (window.currentIdeas && window.currentIdeas.length > 0) {
+        ideasText = window.currentIdeas.map((idea, index) =>
+          `${index + 1}. ${idea.title}
+   Description: ${idea.description}
+   Submitted by: ${idea.userName}
+`
+        ).join('\n');
+      } else {
+        ideasText = 'No ideas submitted yet.';
+      }
+
       const summary = `HackMatch Session Summary
 ========================
 Room ID: ${roomId}
 Date: ${new Date().toLocaleDateString()}
+Time: ${new Date().toLocaleTimeString()}
 
 Team Members: ${userName} (and others in the room)
 
-Ideas Generated:
-${document.querySelectorAll('.idea-card').length} ideas discussed
+Ideas Generated (${window.currentIdeas ? window.currentIdeas.length : 0} total):
+${ideasText}
 
 Next Steps:
 1. Set up your development environment
@@ -661,15 +756,18 @@ Next Steps:
 4. Start building your MVP!
 
 Generated by HackMatch - AI-Powered RAPID Brainstorming
+https://github.com/Aadhavm10/cf_ai_hackmatch
 `;
 
       const blob = new Blob([summary], { type: 'text/plain' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `hackmatch-summary-${roomId}.txt`;
+      a.download = `hackmatch-summary-${Date.now()}.txt`;
       a.click();
       URL.revokeObjectURL(url);
+
+      console.log('[FRONTEND] Exported summary with', window.currentIdeas ? window.currentIdeas.length : 0, 'ideas');
     }
 
     function startOver() {
