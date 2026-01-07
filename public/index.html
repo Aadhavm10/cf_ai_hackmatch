@@ -212,7 +212,12 @@
   <script>
     // Backend configuration - use deployed Worker URL
     const BACKEND_URL = 'https://cf_ai_hackmatch.aadhavmanimurugan.workers.dev';
-    const WS_URL = 'wss://cf_ai_hackmatch.aadhavmanimurugan.workers.dev';
+    // Automatically detect if running locally or in production
+    const WS_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+      ? 'ws://localhost:8787'
+      : 'wss://cf_ai_hackmatch.aadhavmanimurugan.workers.dev';
+
+    console.log('Using WebSocket URL:', WS_URL);
 
     let ws = null;
     let currentStage = 'R';
@@ -302,12 +307,22 @@
           break;
 
         case 'stateUpdate':
-          console.log('Received stateUpdate:', msg.payload);
+          console.log('[FRONTEND] Received stateUpdate:', msg.payload);
           if (msg.payload.currentStage) {
-            console.log('Updating stage from', currentStage, 'to', msg.payload.currentStage);
+            console.log('[FRONTEND] Updating stage from', currentStage, 'to', msg.payload.currentStage);
+
+            // Re-enable the button if it exists (from previous stage)
+            const btn = document.getElementById('startBrainstormBtn');
+            if (btn) {
+              btn.disabled = false;
+              btn.textContent = 'Start Brainstorming →';
+            }
+
             currentStage = msg.payload.currentStage;
             updateStageProgress();
             updateStageUI();
+
+            console.log('[FRONTEND] Stage transition complete, now at:', currentStage);
           }
           break;
 
@@ -542,7 +557,7 @@
     }
 
     function saveContextAndProceed() {
-      console.log('saveContextAndProceed called');
+      console.log('[FRONTEND] saveContextAndProceed called');
 
       // Disable button to prevent multiple clicks
       const btn = document.getElementById('startBrainstormBtn');
@@ -551,6 +566,20 @@
         btn.textContent = 'Starting...';
       }
 
+      // Check WebSocket connection first
+      if (!ws || ws.readyState !== WebSocket.OPEN) {
+        console.error('[FRONTEND] WebSocket not connected, readyState:', ws ? ws.readyState : 'null');
+        alert('Not connected to server. Please refresh and try again.');
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = 'Start Brainstorming →';
+        }
+        return;
+      }
+
+      console.log('[FRONTEND] WebSocket connected, proceeding with transition');
+
+      // Get context information (optional)
       const rulesInput = document.getElementById('hackathonRules');
       const challengesInput = document.getElementById('sponsorChallenges');
       const hoursInput = document.getElementById('timeHours');
@@ -559,40 +588,36 @@
       const challenges = challengesInput ? challengesInput.value.trim() : '';
       const hours = hoursInput ? hoursInput.value : '24';
 
-      console.log('Context:', { rules, challenges, hours });
+      // If context was provided, send it as a message (optional, doesn't block transition)
+      if (rules || challenges) {
+        const contextMessage = `📋 Hackathon Context:\nRules: ${rules || 'None specified'}\nChallenges: ${challenges || 'None specified'}\nTime: ${hours} hours`;
 
-      // Always try to transition, but send context message first if provided
-      if (ws && ws.readyState === WebSocket.OPEN) {
-        if (rules || challenges) {
-          const contextMessage = `📋 Hackathon Context:\nRules: ${rules || 'None specified'}\nChallenges: ${challenges || 'None specified'}\nTime: ${hours} hours`;
+        console.log('[FRONTEND] Sending context message');
+        ws.send(JSON.stringify({
+          type: 'sendMessage',
+          payload: {
+            userId: userId,
+            userName: 'System',
+            content: contextMessage
+          }
+        }));
+      }
 
-          console.log('Sending context message');
-          ws.send(JSON.stringify({
-            type: 'sendMessage',
-            payload: {
-              userId: userId,
-              userName: 'System',
-              content: contextMessage
-            }
-          }));
+      // Directly send transition message (don't wait for context)
+      console.log('[FRONTEND] Sending transitionStage message');
+      ws.send(JSON.stringify({
+        type: 'transitionStage'
+      }));
 
-          // Wait a bit for message to send before transitioning
-          setTimeout(() => {
-            console.log('Calling nextStage after context send');
-            nextStage();
-          }, 500);
-        } else {
-          // No context entered, just proceed immediately
-          console.log('No context, proceeding directly');
-          nextStage();
-        }
-      } else {
-        alert('Not connected to server. Please refresh and try again.');
-        if (btn) {
+      // Set a timeout to re-enable button if no response within 5 seconds
+      setTimeout(() => {
+        if (btn && btn.disabled) {
+          console.error('[FRONTEND] No response after 5 seconds, re-enabling button');
           btn.disabled = false;
           btn.textContent = 'Start Brainstorming →';
+          alert('Stage transition timed out. Please try again or refresh the page.');
         }
-      }
+      }, 5000);
     }
 
     function nextStage() {

@@ -269,7 +269,10 @@ export class HackMatchAgent implements DurableObject {
           break;
 
         case 'transitionStage':
+          console.log('[BACKEND] ===== RECEIVED transitionStage MESSAGE =====');
+          console.log('[BACKEND] Current sessions count:', this.sessions.size);
           await this.transitionStage();
+          console.log('[BACKEND] ===== transitionStage COMPLETED =====');
           break;
 
         case 'updateChallenges':
@@ -530,34 +533,52 @@ export class HackMatchAgent implements DurableObject {
    * Transition to next RAPID stage
    */
   private async transitionStage() {
+    console.log('[BACKEND] transitionStage method called');
     const state = await this.getRoomState();
-    if (!state) return;
+    console.log('[BACKEND] Room state retrieved:', state);
+
+    if (!state) {
+      console.error('[BACKEND] ERROR: No state found, returning');
+      return;
+    }
 
     const stages: RAPIDStage[] = ['R', 'A', 'P', 'I', 'D'];
     const currentIndex = stages.indexOf(state.currentStage as RAPIDStage);
+    console.log('[BACKEND] Current stage:', state.currentStage, 'Index:', currentIndex);
 
     // If already at final stage, just return without error
     if (currentIndex === stages.length - 1) {
-      console.log('Already at final stage D');
+      console.log('[BACKEND] Already at final stage D, not transitioning');
       return;
     }
 
     const nextStage = stages[currentIndex + 1];
+    console.log('[BACKEND] Will transition from', state.currentStage, 'to', nextStage);
 
+    // Update database
+    console.log('[BACKEND] Updating database...');
     await this.state.storage.sql.exec(
       `UPDATE room_state SET current_stage = ?, updated_at = ? WHERE id = 1`,
       nextStage,
       Date.now()
     );
+    console.log('[BACKEND] Database updated successfully');
 
+    // Broadcast to all sessions
+    console.log('[BACKEND] Broadcasting stateUpdate to', this.sessions.size, 'sessions');
     this.broadcast({
       type: 'stateUpdate',
       payload: { currentStage: nextStage },
     });
+    console.log('[BACKEND] Broadcast sent');
 
+    // Generate MVP suggestions if transitioning to stage I
     if (nextStage === 'I') {
+      console.log('[BACKEND] Generating MVP suggestions for stage I');
       await this.generateMVPSuggestions();
     }
+
+    console.log('[BACKEND] transitionStage method complete');
   }
 
   /**
@@ -705,13 +726,28 @@ export class HackMatchAgent implements DurableObject {
    */
   private broadcast(message: any) {
     const messageStr = JSON.stringify(message);
-    this.sessions.forEach((session) => {
+    console.log('[BACKEND] ===== BROADCASTING =====');
+    console.log('[BACKEND] Message type:', message.type);
+    console.log('[BACKEND] Message payload:', message.payload);
+    console.log('[BACKEND] Sessions count:', this.sessions.size);
+
+    let successCount = 0;
+    let errorCount = 0;
+
+    this.sessions.forEach((session, index) => {
       try {
+        console.log(`[BACKEND] Sending to session ${index + 1}/${this.sessions.size}`);
         session.send(messageStr);
+        successCount++;
+        console.log(`[BACKEND] Successfully sent to session ${index + 1}`);
       } catch (error) {
-        console.error('Broadcast error:', error);
+        console.error(`[BACKEND] ERROR sending to session ${index + 1}:`, error);
+        errorCount++;
       }
     });
+
+    console.log('[BACKEND] ===== BROADCAST COMPLETE =====');
+    console.log(`[BACKEND] Success: ${successCount}, Errors: ${errorCount}`);
   }
 
   /**
