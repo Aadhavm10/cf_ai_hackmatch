@@ -32,7 +32,6 @@ export class HackMatchAgent implements DurableObject {
   private env: Env;
   private aiClient: WorkersAIClient;
   private roomId: string = '';
-  private sessions: Set<WebSocket> = new Set();
 
   constructor(state: DurableObjectState, env: Env) {
     this.state = state;
@@ -206,9 +205,9 @@ export class HackMatchAgent implements DurableObject {
 
     // Accept the WebSocket with Durable Objects runtime
     this.state.acceptWebSocket(server);
-    this.sessions.add(server);
 
-    console.log('[BACKEND] WebSocket accepted, sessions count:', this.sessions.size);
+    console.log('[BACKEND] WebSocket accepted');
+    console.log('[BACKEND] Total active WebSockets:', this.state.getWebSockets().length);
 
     // Send initial state immediately (synchronously after acceptance)
     // This must happen before returning the response to ensure the client receives it
@@ -278,7 +277,7 @@ export class HackMatchAgent implements DurableObject {
 
         case 'transitionStage':
           console.log('[BACKEND] ===== RECEIVED transitionStage MESSAGE =====');
-          console.log('[BACKEND] Current sessions count:', this.sessions.size);
+          console.log('[BACKEND] Active WebSockets:', this.state.getWebSockets().length);
           await this.transitionStage();
           console.log('[BACKEND] ===== transitionStage COMPLETED =====');
           break;
@@ -347,8 +346,10 @@ export class HackMatchAgent implements DurableObject {
   /**
    * Handle WebSocket close
    */
-  async webSocketClose(ws: WebSocket) {
-    this.sessions.delete(ws);
+  async webSocketClose(ws: WebSocket, code: number, reason: string, wasClean: boolean) {
+    console.log('[BACKEND] WebSocket closed. Code:', code, 'Reason:', reason, 'Clean:', wasClean);
+    console.log('[BACKEND] Remaining active WebSockets:', this.state.getWebSockets().length);
+    // Durable Objects runtime handles cleanup automatically
     ws.close();
   }
 
@@ -572,13 +573,13 @@ export class HackMatchAgent implements DurableObject {
     );
     console.log('[BACKEND] Database updated successfully');
 
-    // Broadcast to all sessions
-    console.log('[BACKEND] Broadcasting stateUpdate to', this.sessions.size, 'sessions');
+    // Broadcast to all WebSocket clients
+    console.log('[BACKEND] Broadcasting stateUpdate to all clients');
     this.broadcast({
       type: 'stateUpdate',
       payload: { currentStage: nextStage },
     });
-    console.log('[BACKEND] Broadcast sent');
+    console.log('[BACKEND] Broadcast complete');
 
     // Generate MVP suggestions if transitioning to stage I
     if (nextStage === 'I') {
@@ -736,20 +737,23 @@ export class HackMatchAgent implements DurableObject {
     const messageStr = JSON.stringify(message);
     console.log('[BACKEND] ===== BROADCASTING =====');
     console.log('[BACKEND] Message type:', message.type);
-    console.log('[BACKEND] Message payload:', message.payload);
-    console.log('[BACKEND] Sessions count:', this.sessions.size);
+    console.log('[BACKEND] Message payload:', JSON.stringify(message.payload));
+
+    // Use Durable Objects' managed WebSockets instead of manual tracking
+    const webSockets = this.state.getWebSockets();
+    console.log('[BACKEND] Active WebSockets from DO runtime:', webSockets.length);
 
     let successCount = 0;
     let errorCount = 0;
 
-    this.sessions.forEach((session, index) => {
+    webSockets.forEach((ws, index) => {
       try {
-        console.log(`[BACKEND] Sending to session ${index + 1}/${this.sessions.size}`);
-        session.send(messageStr);
+        console.log(`[BACKEND] Sending to WebSocket ${index + 1}/${webSockets.length}`);
+        ws.send(messageStr);
         successCount++;
-        console.log(`[BACKEND] Successfully sent to session ${index + 1}`);
+        console.log(`[BACKEND] Successfully sent to WebSocket ${index + 1}`);
       } catch (error) {
-        console.error(`[BACKEND] ERROR sending to session ${index + 1}:`, error);
+        console.error(`[BACKEND] ERROR sending to WebSocket ${index + 1}:`, error);
         errorCount++;
       }
     });
