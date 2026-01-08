@@ -331,3 +331,126 @@ Respond in valid JSON format (no markdown, no code blocks):
   "suggestions": "<any advice for collaboration>"
 }`;
 }
+
+/**
+ * PRD Question Generation Prompt
+ * Generates contextual questions for building the PRD (6 questions total)
+ */
+export function prdQuestionPrompt(
+  winningIdea: Idea,
+  questionNumber: number,
+  previousAnswers: Array<{ question: string; answer: string }>,
+  hackathonSetup: {
+    teamSize: number;
+    timeHours: number;
+    rulesText?: string;
+    primaryTrack: string;
+  }
+): string {
+  const previousContext =
+    previousAnswers.length > 0
+      ? `\n\nPrevious Q&A:\n${previousAnswers.map((qa, i) => `Q${i + 1}: ${qa.question}\nA${i + 1}: ${qa.answer}`).join('\n\n')}`
+      : '';
+
+  return `You are a hackathon mentor helping a team create a comprehensive PRD (Product Requirements Document).
+
+Winning Idea: ${winningIdea.title}
+Description: ${winningIdea.description}
+
+Hackathon Context:
+- Team Size: ${hackathonSetup.teamSize} people
+- Time Available: ${hackathonSetup.timeHours} hours
+- Primary Track: ${hackathonSetup.primaryTrack}
+${hackathonSetup.rulesText ? `- Rules: ${hackathonSetup.rulesText}` : ''}
+${previousContext}
+
+This is question ${questionNumber} of 6 total questions to build the PRD.
+
+Focus Areas for Questions:
+1. Problem Statement (What problem are you solving? Who has this problem?)
+2. Target Users (Who will use this? What are their pain points?)
+3. Core Features (What are the must-have features for the MVP?)
+4. Technical Constraints (Any technical limitations or requirements?)
+5. Success Criteria (How will you know if this is successful?)
+6. Timeline Breakdown (How will you divide the ${hackathonSetup.timeHours} hours?)
+
+Generate a thoughtful, contextual question that:
+- Builds on previous answers if applicable
+- Helps the team think deeply about their project
+- Is specific and actionable
+- Relates to the hackathon constraints
+
+Respond in valid JSON format (no markdown, no code blocks):
+{
+  "questionKey": "<one of: problem_statement, target_users, core_features, constraints, success_criteria, timeline>",
+  "questionText": "<the actual question to ask the team>",
+  "reasoning": "<1 sentence on why this question is important>"
+}`;
+}
+
+/**
+ * PRD Document Generation Prompt
+ * Synthesizes all Q&A into the final PRD document
+ */
+export function prdGenerationPrompt(
+  winningIdea: Idea,
+  qaList: Array<{ questionKey: string; questionText: string; answerText: string }>,
+  hackathonSetup: {
+    teamSize: number;
+    timeHours: number;
+    rulesText?: string;
+    primaryTrack: string;
+  },
+  techStack?: any
+): string {
+  const qaFormatted = qaList
+    .map((qa) => `Q: ${qa.questionText}\nA: ${qa.answerText}`)
+    .join('\n\n');
+
+  return `You are a technical product manager creating a comprehensive PRD for a hackathon project.
+
+Project: ${winningIdea.title}
+Description: ${winningIdea.description}
+
+Hackathon Context:
+- Team Size: ${hackathonSetup.teamSize} people
+- Time Available: ${hackathonSetup.timeHours} hours
+- Primary Track: ${hackathonSetup.primaryTrack}
+${hackathonSetup.rulesText ? `- Rules: ${hackathonSetup.rulesText}` : ''}
+
+Team's Answers to PRD Questions:
+${qaFormatted}
+
+${techStack ? `\n\nRecommended Tech Stack:\n- Frontend: ${techStack.frontend}\n- Backend: ${techStack.backend}\n- Database: ${techStack.database}\n- Deployment: ${techStack.deployment}` : ''}
+
+Synthesize all this information into a comprehensive PRD document.
+
+The PRD should be:
+- Clear and actionable
+- Realistic for the hackathon timeframe
+- Aligned with the team's answers
+- Professional but concise
+
+Respond in valid JSON format (no markdown, no code blocks):
+{
+  "problemStatement": "<2-3 sentences describing the problem>",
+  "solutionOverview": "<2-3 sentences describing the solution>",
+  "targetUsers": "<1-2 sentences describing who will use this>",
+  "coreFeatures": ["<feature1>", "<feature2>", "<feature3>"],
+  "techStack": {
+    "frontend": "<recommendation>",
+    "backend": "<recommendation>",
+    "database": "<recommendation>",
+    "deployment": "<recommendation>",
+    "reasoning": "<why this stack fits>"
+  },
+  "timeline": {
+    "phase1": "<hours 0-X: description>",
+    "phase2": "<hours X-Y: description>",
+    "phase3": "<hours Y-Z: description>",
+    "buffer": "<final hours: testing/polish>"
+  },
+  "successCriteria": ["<criterion1>", "<criterion2>", "<criterion3>"],
+  "constraints": "<any technical or time constraints to be aware of>"
+}`;
+}

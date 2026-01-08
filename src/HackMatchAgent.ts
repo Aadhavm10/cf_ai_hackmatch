@@ -6,6 +6,8 @@ import {
   mvpPrioritizationPrompt,
   trackValidationPrompt,
   roleAllocationPrompt,
+  prdQuestionPrompt,
+  prdGenerationPrompt,
 } from './ai/prompts.js';
 import type {
   RAPIDStage,
@@ -16,6 +18,8 @@ import type {
   AIFeasibilityScore,
   TeamMember,
   HackathonSetup,
+  PRDQuestion,
+  PRDDocument,
 } from './types/rapid.js';
 
 export interface Env {
@@ -53,11 +57,12 @@ export class HackMatchAgent implements DurableObject {
       `CREATE TABLE IF NOT EXISTS room_state (
         id INTEGER PRIMARY KEY CHECK (id = 1),
         room_id TEXT NOT NULL,
-        current_stage TEXT NOT NULL CHECK (current_stage IN ('R', 'A', 'P', 'I', 'D')),
+        current_stage TEXT NOT NULL CHECK (current_stage IN ('R', 'A', 'P', 'PRD', 'D')),
         selected_challenges TEXT,
         winning_idea_id INTEGER,
         tech_stack TEXT,
         setup_phase TEXT DEFAULT 'hackathon_info' CHECK (setup_phase IN ('hackathon_info', 'team_profiles', 'track_validation', 'complete')),
+        prd_question_count INTEGER DEFAULT 0,
         created_at INTEGER NOT NULL,
         updated_at INTEGER NOT NULL
       )`,
@@ -132,12 +137,40 @@ export class HackMatchAgent implements DurableObject {
         team_size INTEGER,
         rules_text TEXT,
         time_hours INTEGER DEFAULT 24,
+        sponsor_name TEXT,
+        sponsor_details TEXT,
+        primary_track TEXT,
         selected_tracks TEXT,
         track_validation TEXT,
         profiles_complete INTEGER DEFAULT 0,
-        setup_complete INTEGER DEFAULT 0
+        setup_complete INTEGER DEFAULT 0,
+        created_at INTEGER
       )`,
       `INSERT OR IGNORE INTO hackathon_setup (id) VALUES (1)`,
+      `CREATE TABLE IF NOT EXISTS prd_qa (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        question_key TEXT NOT NULL,
+        question_text TEXT NOT NULL,
+        answer_text TEXT,
+        sort_order INTEGER NOT NULL,
+        answered INTEGER DEFAULT 0,
+        created_at INTEGER NOT NULL
+      )`,
+      `CREATE INDEX IF NOT EXISTS idx_prd_qa_order ON prd_qa(sort_order)`,
+      `CREATE TABLE IF NOT EXISTS prd_document (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        winning_idea_id INTEGER NOT NULL,
+        problem_statement TEXT,
+        solution_overview TEXT,
+        target_users TEXT,
+        core_features TEXT,
+        tech_stack TEXT,
+        timeline TEXT,
+        success_criteria TEXT,
+        constraints TEXT,
+        generated_at INTEGER,
+        prd_complete INTEGER DEFAULT 0
+      )`,
     ];
 
     for (const statement of schemaStatements) {
@@ -327,6 +360,42 @@ export class HackMatchAgent implements DurableObject {
           await this.resetToStageR();
           break;
 
+        case 'saveHackathonSetup':
+          await this.saveHackathonSetup(
+            data.payload.teamSize,
+            data.payload.timeHours,
+            data.payload.rulesText,
+            data.payload.sponsorName,
+            data.payload.sponsorDetails,
+            data.payload.primaryTrack
+          );
+          break;
+
+        case 'selectWinningIdea':
+          await this.selectWinningIdeaAndProceed(data.payload.ideaId);
+          break;
+
+        case 'answerPRDQuestion':
+          await this.answerPRDQuestion(
+            data.payload.questionId,
+            data.payload.answerText
+          );
+          break;
+
+        case 'regeneratePRD':
+          await this.generateFinalPRD();
+          break;
+
+        case 'requestAIScoring':
+          console.log('[BACKEND] ========== Manual AI scoring requested ==========');
+          try {
+            await this.autoScoreAllIdeas();
+            console.log('[BACKEND] ========== AI scoring completed successfully ==========');
+          } catch (error) {
+            console.error('[BACKEND] ========== AI scoring FAILED ==========', error);
+          }
+          break;
+
         default:
           console.log('Unknown message type:', data.type);
       }
@@ -475,11 +544,18 @@ export class HackMatchAgent implements DurableObject {
    * Get AI-powered feasibility score
    */
   private async scoreIdeaWithAI(ideaId: number): Promise<void> {
+    console.log(`[BACKEND] ===== Starting scoreIdeaWithAI for idea ${ideaId} =====`);
+
     const ideaResult = await this.state.storage.sql
       .exec('SELECT * FROM ideas WHERE id = ?', ideaId)
       .toArray();
 
-    if (ideaResult.length === 0) return;
+    console.log(`[BACKEND] Query result for idea ${ideaId}:`, ideaResult.length > 0 ? 'found' : 'NOT FOUND');
+
+    if (ideaResult.length === 0) {
+      console.log(`[BACKEND] Idea ${ideaId} not found in database, returning early`);
+      return;
+    }
 
     const idea: Idea = {
       id: ideaResult[0].id as number,
@@ -491,8 +567,11 @@ export class HackMatchAgent implements DurableObject {
       createdAt: ideaResult[0].created_at as number,
     };
 
+    console.log(`[BACKEND] Scoring idea: "${idea.title}" by ${idea.userName}`);
+
     try {
       // Get hackathon setup for team size and time
+      console.log(`[BACKEND] Fetching hackathon setup...`);
       const setup = await this.state.storage.sql
         .exec('SELECT * FROM hackathon_setup WHERE id = 1')
         .toArray();
@@ -500,9 +579,17 @@ export class HackMatchAgent implements DurableObject {
       const teamSize = setup.length > 0 && setup[0].team_size ? (setup[0].team_size as number) : 3;
       const timeHours = setup.length > 0 && setup[0].time_hours ? (setup[0].time_hours as number) : 24;
 
+      console.log(`[BACKEND] Using teamSize=${teamSize}, timeHours=${timeHours}`);
+
+      console.log(`[BACKEND] Generating feasibility prompt...`);
       const prompt = feasibilityPrompt(idea, teamSize, timeHours);
+
+      console.log(`[BACKEND] Calling AI generateJSON for idea ${ideaId}...`);
       const aiScore = await this.aiClient.generateJSON<AIFeasibilityScore>(prompt);
 
+      console.log(`[BACKEND] ✅ AI returned score for idea ${ideaId}:`, aiScore);
+
+      console.log(`[BACKEND] Saving AI score to database...`);
       await this.state.storage.sql.exec(
         `INSERT INTO ai_suggestions (suggestion_type, content, metadata, created_at)
          VALUES ('feasibility_score', ?, ?, ?)`,
@@ -511,16 +598,24 @@ export class HackMatchAgent implements DurableObject {
         Date.now()
       );
 
+      console.log(`[BACKEND] Broadcasting AI score for idea ${ideaId} to all clients...`);
+      // Broadcast AI score to all clients
       this.broadcast({
-        type: 'aiSuggestion',
+        type: 'aiScore',
         payload: {
-          type: 'feasibility_score',
           ideaId,
           data: aiScore,
         },
       });
+
+      console.log(`[BACKEND] ✅ Successfully broadcast aiScore for idea ${ideaId}`);
     } catch (error) {
-      console.error('AI scoring failed:', error);
+      console.error(`[BACKEND] ❌ AI scoring failed for idea ${ideaId}:`, error);
+      console.error(`[BACKEND] Error details:`, {
+        name: (error as Error).name,
+        message: (error as Error).message,
+        stack: (error as Error).stack,
+      });
     }
   }
 
@@ -551,7 +646,7 @@ export class HackMatchAgent implements DurableObject {
       return;
     }
 
-    const stages: RAPIDStage[] = ['R', 'A', 'P', 'I', 'D'];
+    const stages: RAPIDStage[] = ['R', 'A', 'P', 'PRD', 'D'];
     const currentIndex = stages.indexOf(state.currentStage as RAPIDStage);
     console.log('[BACKEND] Current stage:', state.currentStage, 'Index:', currentIndex);
 
@@ -587,13 +682,6 @@ export class HackMatchAgent implements DurableObject {
       },
     });
     console.log('[BACKEND] Broadcast complete');
-
-    // Generate MVP suggestions if transitioning to stage I
-    if (nextStage === 'I') {
-      console.log('[BACKEND] Generating MVP suggestions for stage I');
-      await this.generateMVPSuggestions();
-    }
-
     console.log('[BACKEND] transitionStage method complete');
   }
 
@@ -1008,6 +1096,439 @@ export class HackMatchAgent implements DurableObject {
       type: 'setupComplete',
       payload: { canProceed: true },
     });
+  }
+
+  /**
+   * Save hackathon setup from structured form in Stage R
+   */
+  private async saveHackathonSetup(
+    teamSize: number,
+    timeHours: number,
+    rulesText: string,
+    sponsorName: string,
+    sponsorDetails: string,
+    primaryTrack: string
+  ) {
+    console.log('[BACKEND] Saving hackathon setup');
+
+    const createdAt = Date.now();
+
+    await this.state.storage.sql.exec(
+      `UPDATE hackathon_setup SET
+       team_size = ?,
+       time_hours = ?,
+       rules_text = ?,
+       sponsor_name = ?,
+       sponsor_details = ?,
+       primary_track = ?,
+       setup_complete = 1,
+       created_at = ?
+       WHERE id = 1`,
+      teamSize,
+      timeHours,
+      rulesText || null,
+      sponsorName || null,
+      sponsorDetails || null,
+      primaryTrack,
+      createdAt
+    );
+
+    this.broadcast({
+      type: 'setupSaved',
+      payload: { teamSize, timeHours, primaryTrack },
+    });
+
+    console.log('[BACKEND] Hackathon setup saved successfully');
+  }
+
+  /**
+   * Auto-score all ideas when entering Stage P
+   */
+  private async autoScoreAllIdeas() {
+    console.log('[BACKEND] Auto-scoring all ideas for Stage P');
+
+    const ideasResult = await this.state.storage.sql
+      .exec('SELECT * FROM ideas ORDER BY created_at ASC')
+      .toArray();
+
+    console.log(`[BACKEND] Found ${ideasResult.length} ideas to score`);
+
+    if (ideasResult.length === 0) {
+      console.log('[BACKEND] No ideas to score');
+      return;
+    }
+
+    // Map SQL results to Idea type
+    const ideas: Idea[] = ideasResult.map((row) => ({
+      id: row.id as number,
+      userId: row.user_id as string,
+      userName: row.user_name as string,
+      title: row.title as string,
+      description: row.description as string,
+      phase: row.phase as 'silent' | 'group',
+      createdAt: row.created_at as number,
+    }));
+
+    console.log(`[BACKEND] Mapped ideas:`, ideas.map(i => ({ id: i.id, title: i.title })));
+
+    // Score ideas sequentially with delay to avoid rate limits
+    console.log(`[BACKEND] Starting to score ${ideas.length} ideas sequentially (to avoid rate limits)`);
+    for (let i = 0; i < ideas.length; i++) {
+      const idea = ideas[i];
+      console.log(`[BACKEND] Scoring idea ${i + 1}/${ideas.length}: "${idea.title}" (ID: ${idea.id})`);
+
+      try {
+        await this.scoreIdeaWithAI(idea.id);
+        console.log(`[BACKEND] ✓ Successfully scored idea ${idea.id}`);
+
+        // Add delay between ideas to avoid rate limiting (except for last idea)
+        if (i < ideas.length - 1) {
+          const delayMs = 2000; // 2 second delay between ideas
+          console.log(`[BACKEND] Waiting ${delayMs}ms before next idea...`);
+          await new Promise(resolve => setTimeout(resolve, delayMs));
+        }
+      } catch (error) {
+        console.error(`[BACKEND] ❌ Failed to score idea ${idea.id}:`, error);
+        // Continue with next idea even if one fails
+      }
+    }
+
+    console.log('[BACKEND] Finished auto-scoring all ideas');
+  }
+
+  /**
+   * Select winning idea and transition to PRD stage
+   */
+  private async selectWinningIdeaAndProceed(ideaId: number) {
+    console.log(`[BACKEND] Selecting winning idea ${ideaId} and starting PRD flow`);
+
+    // Store winning idea in room_state
+    await this.state.storage.sql.exec(
+      `UPDATE room_state SET winning_idea_id = ?, current_stage = 'PRD', prd_question_count = 0 WHERE id = 1`,
+      ideaId
+    );
+
+    // Initialize PRD document
+    await this.state.storage.sql.exec(
+      `INSERT OR REPLACE INTO prd_document (id, winning_idea_id, prd_complete) VALUES (1, ?, 0)`,
+      ideaId
+    );
+
+    // Clear any existing PRD Q&A
+    await this.state.storage.sql.exec(`DELETE FROM prd_qa`);
+
+    // Broadcast stage transition
+    this.broadcast({
+      type: 'stateUpdate',
+      payload: {
+        currentStage: 'PRD',
+        winningIdeaId: ideaId,
+      },
+    });
+
+    // Start PRD questionnaire
+    await this.askNextPRDQuestion();
+  }
+
+  /**
+   * Ask the next PRD question using AI
+   */
+  private async askNextPRDQuestion() {
+    console.log('[BACKEND] Asking next PRD question');
+
+    // Get current state
+    const state = await this.state.storage.sql
+      .exec('SELECT * FROM room_state WHERE id = 1')
+      .toArray();
+
+    if (state.length === 0 || !state[0].winning_idea_id) {
+      console.error('[BACKEND] No winning idea selected');
+      return;
+    }
+
+    const winningIdeaId = state[0].winning_idea_id as number;
+    const currentQuestionCount = (state[0].prd_question_count as number) || 0;
+
+    // Check if we've asked all 6 questions
+    if (currentQuestionCount >= 6) {
+      console.log('[BACKEND] All PRD questions answered, generating final PRD');
+      await this.generateFinalPRD();
+      return;
+    }
+
+    // Get winning idea
+    const ideasResult = await this.state.storage.sql
+      .exec('SELECT * FROM ideas WHERE id = ?', winningIdeaId)
+      .toArray();
+
+    if (ideasResult.length === 0) {
+      console.error('[BACKEND] Winning idea not found');
+      return;
+    }
+
+    const row = ideasResult[0];
+    const winningIdea: Idea = {
+      id: row.id as number,
+      userId: row.user_id as string,
+      userName: row.user_name as string,
+      title: row.title as string,
+      description: row.description as string,
+      phase: row.phase as 'silent' | 'group',
+      createdAt: row.created_at as number,
+    };
+
+    // Get hackathon setup
+    const setup = await this.state.storage.sql
+      .exec('SELECT * FROM hackathon_setup WHERE id = 1')
+      .toArray();
+
+    const hackathonSetup = {
+      teamSize: setup.length > 0 && setup[0].team_size ? (setup[0].team_size as number) : 3,
+      timeHours: setup.length > 0 && setup[0].time_hours ? (setup[0].time_hours as number) : 24,
+      rulesText: setup.length > 0 ? (setup[0].rules_text as string | undefined) : undefined,
+      primaryTrack: setup.length > 0 && setup[0].primary_track ? (setup[0].primary_track as string) : 'General',
+    };
+
+    // Get previous Q&A
+    const previousQA = (await this.state.storage.sql
+      .exec('SELECT question_text, answer_text FROM prd_qa WHERE answered = 1 ORDER BY sort_order ASC')
+      .toArray()) as Array<{ question_text: string; answer_text: string }>;
+
+    const previousAnswers = previousQA.map((qa) => ({
+      question: qa.question_text,
+      answer: qa.answer_text,
+    }));
+
+    // Generate next question with AI
+    const aiClient = new WorkersAIClient(this.env.AI);
+    const prompt = prdQuestionPrompt(
+      winningIdea,
+      currentQuestionCount + 1,
+      previousAnswers,
+      hackathonSetup
+    );
+
+    try {
+      const questionData = await aiClient.generateJSON<{
+        questionKey: string;
+        questionText: string;
+        reasoning: string;
+      }>(prompt);
+
+      // Store question in database
+      const createdAt = Date.now();
+      await this.state.storage.sql.exec(
+        `INSERT INTO prd_qa (question_key, question_text, sort_order, answered, created_at)
+         VALUES (?, ?, ?, 0, ?)`,
+        questionData.questionKey,
+        questionData.questionText,
+        currentQuestionCount + 1,
+        createdAt
+      );
+
+      // Get the inserted question ID
+      const newQuestionResult = await this.state.storage.sql
+        .exec('SELECT * FROM prd_qa WHERE sort_order = ?', currentQuestionCount + 1)
+        .toArray();
+
+      const newQuestionRow = newQuestionResult[0];
+      const newQuestion: PRDQuestion = {
+        id: newQuestionRow.id as number,
+        questionKey: newQuestionRow.question_key as string,
+        questionText: newQuestionRow.question_text as string,
+        answerText: newQuestionRow.answer_text as string | undefined,
+        sortOrder: newQuestionRow.sort_order as number,
+        answered: newQuestionRow.answered as number,
+        createdAt: newQuestionRow.created_at as number,
+      };
+
+      // Update question count
+      await this.state.storage.sql.exec(
+        `UPDATE room_state SET prd_question_count = ? WHERE id = 1`,
+        currentQuestionCount + 1
+      );
+
+      // Broadcast question
+      this.broadcast({
+        type: 'prdQuestion',
+        payload: {
+          id: newQuestion.id,
+          questionKey: newQuestion.questionKey,
+          questionText: newQuestion.questionText,
+          sortOrder: newQuestion.sortOrder,
+        },
+      });
+
+      console.log(`[BACKEND] Asked PRD question ${currentQuestionCount + 1}/6`);
+    } catch (error) {
+      console.error('[BACKEND] Failed to generate PRD question:', error);
+    }
+  }
+
+  /**
+   * Answer a PRD question and ask the next one
+   */
+  private async answerPRDQuestion(questionId: number, answerText: string) {
+    console.log(`[BACKEND] Answering PRD question ${questionId}`);
+
+    // Update question as answered
+    await this.state.storage.sql.exec(
+      `UPDATE prd_qa SET answer_text = ?, answered = 1 WHERE id = ?`,
+      answerText,
+      questionId
+    );
+
+    // Broadcast answer confirmation
+    this.broadcast({
+      type: 'prdAnswerReceived',
+      payload: { questionId, answerText },
+    });
+
+    // Ask next question
+    await this.askNextPRDQuestion();
+  }
+
+  /**
+   * Generate final PRD document from all Q&A
+   */
+  private async generateFinalPRD() {
+    console.log('[BACKEND] Generating final PRD document');
+
+    // Get winning idea
+    const state = await this.state.storage.sql
+      .exec('SELECT * FROM room_state WHERE id = 1')
+      .toArray();
+
+    const winningIdeaId = state[0].winning_idea_id as number;
+
+    const ideasResult = await this.state.storage.sql
+      .exec('SELECT * FROM ideas WHERE id = ?', winningIdeaId)
+      .toArray();
+
+    const ideaRow = ideasResult[0];
+    const winningIdea: Idea = {
+      id: ideaRow.id as number,
+      userId: ideaRow.user_id as string,
+      userName: ideaRow.user_name as string,
+      title: ideaRow.title as string,
+      description: ideaRow.description as string,
+      phase: ideaRow.phase as 'silent' | 'group',
+      createdAt: ideaRow.created_at as number,
+    };
+
+    // Get all Q&A
+    const qaResult = await this.state.storage.sql
+      .exec('SELECT * FROM prd_qa ORDER BY sort_order ASC')
+      .toArray();
+
+    const qaList: PRDQuestion[] = qaResult.map((row) => ({
+      id: row.id as number,
+      questionKey: row.question_key as string,
+      questionText: row.question_text as string,
+      answerText: row.answer_text as string | undefined,
+      sortOrder: row.sort_order as number,
+      answered: row.answered as number,
+      createdAt: row.created_at as number,
+    }));
+
+    const formattedQA = qaList.map((qa) => ({
+      questionKey: qa.questionKey,
+      questionText: qa.questionText,
+      answerText: qa.answerText || '',
+    }));
+
+    // Get hackathon setup
+    const setup = await this.state.storage.sql
+      .exec('SELECT * FROM hackathon_setup WHERE id = 1')
+      .toArray();
+
+    const hackathonSetup = {
+      teamSize: setup.length > 0 && setup[0].team_size ? (setup[0].team_size as number) : 3,
+      timeHours: setup.length > 0 && setup[0].time_hours ? (setup[0].time_hours as number) : 24,
+      rulesText: setup.length > 0 ? (setup[0].rules_text as string | undefined) : undefined,
+      primaryTrack: setup.length > 0 && setup[0].primary_track ? (setup[0].primary_track as string) : 'General',
+    };
+
+    // Generate PRD with AI
+    const aiClient = new WorkersAIClient(this.env.AI);
+    const prompt = prdGenerationPrompt(winningIdea, formattedQA, hackathonSetup);
+
+    try {
+      const prd = await aiClient.generateJSON<{
+        problemStatement: string;
+        solutionOverview: string;
+        targetUsers: string;
+        coreFeatures: string[];
+        techStack: any;
+        timeline: any;
+        successCriteria: string[];
+        constraints: string;
+      }>(prompt);
+
+      // Store PRD in database
+      const generatedAt = Date.now();
+      await this.state.storage.sql.exec(
+        `UPDATE prd_document SET
+         problem_statement = ?,
+         solution_overview = ?,
+         target_users = ?,
+         core_features = ?,
+         tech_stack = ?,
+         timeline = ?,
+         success_criteria = ?,
+         constraints = ?,
+         generated_at = ?,
+         prd_complete = 1
+         WHERE id = 1`,
+        prd.problemStatement,
+        prd.solutionOverview,
+        prd.targetUsers,
+        JSON.stringify(prd.coreFeatures),
+        JSON.stringify(prd.techStack),
+        JSON.stringify(prd.timeline),
+        JSON.stringify(prd.successCriteria),
+        prd.constraints,
+        generatedAt
+      );
+
+      // Transition to Stage D (Export)
+      await this.state.storage.sql.exec(
+        `UPDATE room_state SET current_stage = 'D' WHERE id = 1`
+      );
+
+      // Broadcast PRD complete with the document
+      const prdDocument = {
+        problem_statement: prd.problemStatement,
+        solution_overview: prd.solutionOverview,
+        target_users: prd.targetUsers,
+        core_features: JSON.stringify(prd.coreFeatures),
+        tech_stack: JSON.stringify(prd.techStack),
+        timeline: JSON.stringify(prd.timeline),
+        success_criteria: JSON.stringify(prd.successCriteria),
+        constraints: prd.constraints,
+      };
+
+      console.log('[BACKEND] Broadcasting PRD complete with document');
+      this.broadcast({
+        type: 'prdComplete',
+        payload: {
+          prdDocument,
+          currentStage: 'D',
+        },
+      });
+
+      // Also send a stateUpdate for consistency
+      this.broadcast({
+        type: 'stateUpdate',
+        payload: {
+          currentStage: 'D',
+        },
+      });
+
+      console.log('[BACKEND] PRD generation complete, transitioned to Stage D');
+    } catch (error) {
+      console.error('[BACKEND] PRD generation failed:', error);
+    }
   }
 
   /**

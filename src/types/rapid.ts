@@ -1,5 +1,5 @@
 // RAPID Stage types
-export type RAPIDStage = 'R' | 'A' | 'P' | 'I' | 'D';
+export type RAPIDStage = 'R' | 'A' | 'P' | 'PRD' | 'D';
 
 export interface Challenge {
   id: string;
@@ -87,8 +87,37 @@ export interface HackathonSetup {
   teamSize?: number;
   rulesText?: string;
   timeHours: number;
+  sponsorName?: string;
+  sponsorDetails?: string;
+  primaryTrack?: string;
   selectedTracks?: string; // JSON array
   trackValidation?: string; // JSON
   profilesComplete: number;
   setupComplete: number;
+  createdAt?: number;
+}
+
+export interface PRDQuestion {
+  id: number;
+  questionKey: string;
+  questionText: string;
+  answerText?: string;
+  sortOrder: number;
+  answered: number;
+  createdAt: number;
+}
+
+export interface PRDDocument {
+  id: number;
+  winningIdeaId: number;
+  problemStatement?: string;
+  solutionOverview?: string;
+  targetUsers?: string;
+  coreFeatures?: string; // JSON array
+  techStack?: string; // JSON object
+  timeline?: string; // JSON object
+  successCriteria?: string; // JSON array
+  constraints?: string;
+  generatedAt?: number;
+  prdComplete: number;
 }
