@@ -210,11 +210,13 @@
   </div>
 
   <script>
-    // Backend configuration - use deployed Worker URL
-    const BACKEND_URL = 'https://cf_ai_hackmatch.aadhavmanimurugan.workers.dev';
-    // Automatically detect if running locally or in production
-    const WS_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
-      ? 'ws://localhost:8787'
+    // Backend configuration - automatically detect local vs production
+    const IS_LOCAL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    const BACKEND_URL = IS_LOCAL
+      ? 'http://localhost:8788'
+      : 'https://cf_ai_hackmatch.aadhavmanimurugan.workers.dev';
+    const WS_URL = IS_LOCAL
+      ? 'ws://localhost:8788'
       : 'wss://cf_ai_hackmatch.aadhavmanimurugan.workers.dev';
 
     console.log('Using WebSocket URL:', WS_URL);

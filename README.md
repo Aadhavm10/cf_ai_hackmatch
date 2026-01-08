@@ -6,6 +6,20 @@ AI-Powered RAPID Brainstorming Platform for Hackathon Teams
 
 HackMatch guides hackathon teams through the proven RAPID framework, helping them go from idea chaos to clear MVP in 30 minutes instead of 3-5 hours of unstructured brainstorming.
 
+## Quick Start (3 Steps)
+
+```bash
+# 1. Install dependencies
+npm install
+
+# 2. Start backend (in Terminal 1)
+npm run dev
+
+# 3. Start frontend (in Terminal 2)
+npx serve public -p 8080
+```
+
+Then open http://localhost:8080 in your browser!
 
 ## Setup Instructions
 
@@ -31,15 +45,31 @@ HackMatch guides hackathon teams through the proven RAPID framework, helping the
    Backend will be available at `http://localhost:8788`
 
 3. **Run Frontend** (Terminal 2):
+
+   **Option A - Using Python** (Mac/Linux):
    ```bash
    cd public
    python3 -m http.server 8080
-   # or: npx serve
    ```
+
+   **Option B - Using npx** (Works on all platforms):
+   ```bash
+   npx serve public -p 8080
+   ```
+
    Frontend will be available at `http://localhost:8080`
 
 4. **Test with Multiple Users**:
    Open multiple browser windows/tabs to simulate a team collaborating in real-time.
+
+**How it works:** The frontend automatically detects `localhost` and connects to the correct backend:
+- Local: `http://localhost:8788` (HTTP) and `ws://localhost:8788` (WebSocket)
+- Production: `https://cf_ai_hackmatch.aadhavmanimurugan.workers.dev`
+
+**Troubleshooting:**
+- If port 8080 is in use: `npx serve public -p 3000` (use different port)
+- If port 8788 is in use: wrangler will automatically choose another port
+- Make sure both backend and frontend servers are running
 
 ## Project Structure
 
