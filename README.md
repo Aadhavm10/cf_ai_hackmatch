@@ -6,21 +6,22 @@ AI-Powered RAPID Brainstorming Platform for Hackathon Teams
 
 HackMatch guides hackathon teams through the proven RAPID framework, helping them go from idea chaos to clear MVP in 30 minutes instead of 3-5 hours of unstructured brainstorming.
 
-### RAPID Framework (5 Stages)
+### RAPID Framework (6 Stages)
 
 1. **Review** (3 min): Select hackathon challenges to focus on
 2. **All Ideas** (10 min): Silent brainstorming → group sharing with AI combinations
 3. **Prioritize** (5 min): Score ideas on feasibility with AI-powered objective scoring
-4. **Identify MVP** (5 min): Drag features into Must/Nice/Out of Scope, AI suggests tech stack
-5. **Decide** (2 min): Final vote and export project summary
+4. **PRD** (7 min): AI-guided 6-question Product Requirements Document creation
+5. **Identify MVP** (5 min): Drag features into Must/Nice/Out of Scope, AI suggests tech stack
+6. **Decide** (2 min): Final vote and export project summary
 
 ## Technology Stack
 
-- **Backend**: Cloudflare Workers + Durable Objects using [Cloudflare Agent SDK](https://agents.cloudflare.com/)
-- **AI**: Workers AI (Llama 3.3-70b-instruct)
-- **Frontend**: Standalone HTML/JavaScript
-- **Database**: SQLite in Durable Objects
-- **Real-time**: WebSocket (via Durable Objects)
+- **Backend**: Cloudflare Workers + Durable Objects
+- **AI**: Workers AI (Llama 3.1-8b-instruct)
+- **Frontend**: Standalone HTML/JavaScript (no framework)
+- **Database**: SQLite in Durable Objects (13 tables)
+- **Real-time**: WebSocket (via Durable Objects API)
 
 ## Setup Instructions
 
@@ -43,7 +44,7 @@ HackMatch guides hackathon teams through the proven RAPID framework, helping the
    ```bash
    npm run dev
    ```
-   Backend will be available at `http://localhost:8787`
+   Backend will be available at `http://localhost:8788`
 
 3. **Run Frontend** (Terminal 2):
    ```bash
@@ -62,18 +63,20 @@ HackMatch guides hackathon teams through the proven RAPID framework, helping the
 cf_ai_hackmatch/
 ├── src/
 │   ├── index.ts              # Worker entry point
-│   ├── HackMatchAgent.ts     # Main Agent class (Durable Object)
-│   ├── schema.sql            # SQLite database schema
-│   ├── types/                # TypeScript interfaces
-│   └── ai/                   # AI prompts and scoring logic
-├── frontend/                 # React application
-│   ├── src/
-│   │   ├── components/       # React components
-│   │   ├── hooks/            # Custom hooks (useAgent)
-│   │   └── store/            # Zustand state management
-│   └── vite.config.ts
+│   ├── HackMatchAgent.ts     # Main Durable Object (1,551 lines)
+│   ├── schema.sql            # SQLite database schema (13 tables)
+│   ├── ai/
+│   │   ├── client.ts         # Workers AI integration
+│   │   └── prompts.ts        # AI prompt templates
+│   └── types/
+│       ├── rapid.ts          # RAPID workflow types
+│       └── room.ts           # Room state types
+├── public/
+│   └── index.html            # Frontend (standalone HTML/JS, 1,269 lines)
 ├── wrangler.toml             # Cloudflare Workers config
-└── package.json
+├── package.json
+├── README.md                 # This file
+└── PROMPTS.md                # AI prompts documentation
 ```
 
 ## Deployment
@@ -81,7 +84,7 @@ cf_ai_hackmatch/
 ### Live Deployment
 
 The application is currently deployed and accessible at:
-- **Frontend**: https://hackmatch.pages.dev (or https://24a5b151.hackmatch.pages.dev)
+- **Frontend**: https://main.hackmatch.pages.dev
 - **Backend API**: https://cf_ai_hackmatch.aadhavmanimurugan.workers.dev
 
 Visit the frontend URL to start a brainstorming session!
@@ -129,7 +132,7 @@ python3 -m http.server 8080
 
 Then open http://localhost:8080 in your browser.
 
-**Note:** When testing locally, the WebSocket will connect to `localhost:8787` (the wrangler dev server).
+**Note:** When testing locally, the WebSocket will connect to `localhost:8788` (the wrangler dev server).
 
 ## Features
 
@@ -146,7 +149,7 @@ Then open http://localhost:8080 in your browser.
 
 ## Cloudflare Requirements Met
 
-- ✅ LLM: Workers AI (Llama 3.3-70b-instruct)
+- ✅ LLM: Workers AI (Llama 3.1-8b-instruct)
 - ✅ Workflow: Cloudflare Workers + Durable Objects
 - ✅ User Input: Chat + idea submission forms + team profiles
 - ✅ Memory/State: SQLite in Durable Objects

@@ -10,6 +10,9 @@ HackMatch uses Workers AI (Llama 3.1-8b-instruct) to provide intelligent assista
 - Suggest appropriate tech stacks
 - Prioritize MVP features
 - Distribute work among team members
+- Generate PRD questions and documents
+- Validate track selections
+- Allocate team roles
 
 ---
 
@@ -303,7 +306,7 @@ Respond in valid JSON format (no markdown, no code blocks):
 **Example Usage:**
 - **Triggered:** Automatically during transition to Stage I (Identify MVP)
 - **Location:** `src/HackMatchAgent.ts` - `generateMVPSuggestions()` method
-- **Model:** `@cf/meta/llama-3.3-70b-instruct`
+- **Model:** `@cf/meta/llama-3.1-8b-instruct`
 
 ---
 
@@ -366,7 +369,7 @@ Respond in valid JSON format (no markdown, no code blocks):
 **Example Usage:**
 - **Triggered:** During Stage R (Review) when user requests track validation
 - **Location:** `src/HackMatchAgent.ts` - `validateTracks()` method
-- **Model:** `@cf/meta/llama-3.3-70b-instruct`
+- **Model:** `@cf/meta/llama-3.1-8b-instruct`
 
 ---
 
@@ -438,7 +441,167 @@ Respond in valid JSON format (no markdown, no code blocks):
 **Example Usage:**
 - **Triggered:** During Stage I (Identify MVP) when user requests role allocation
 - **Location:** `src/HackMatchAgent.ts` - `allocateRoles()` method
-- **Model:** `@cf/meta/llama-3.3-70b-instruct`
+- **Model:** `@cf/meta/llama-3.1-8b-instruct`
+
+---
+
+## 8. PRD Question Generation Prompt
+
+**Purpose:** Generates contextual questions to guide teams through creating a Product Requirements Document (PRD).
+
+**Input Variables:**
+- `winningIdea.title` & `winningIdea.description` - The selected project
+- `questionNumber` - Current question (1-6)
+- `previousAnswers` - Array of previous Q&A pairs
+- `hackathonSetup` - Team size, time available, primary track, rules
+
+**Prompt Template:**
+```
+You are a hackathon mentor helping a team create a comprehensive PRD (Product Requirements Document).
+
+Winning Idea: {winningIdea.title}
+Description: {winningIdea.description}
+
+Hackathon Context:
+- Team Size: {teamSize} people
+- Time Available: {timeHours} hours
+- Primary Track: {primaryTrack}
+- Rules: {rulesText if provided}
+
+Previous Q&A:
+[If questions already answered, list them here]
+
+This is question {questionNumber} of 6 total questions to build the PRD.
+
+Focus Areas for Questions:
+1. Problem Statement (What problem are you solving? Who has this problem?)
+2. Target Users (Who will use this? What are their pain points?)
+3. Core Features (What are the must-have features for the MVP?)
+4. Technical Constraints (Any technical limitations or requirements?)
+5. Success Criteria (How will you know if this is successful?)
+6. Timeline Breakdown (How will you divide the {timeHours} hours?)
+
+Generate a thoughtful, contextual question that:
+- Builds on previous answers if applicable
+- Helps the team think deeply about their project
+- Is specific and actionable
+- Relates to the hackathon constraints
+
+Respond in valid JSON format (no markdown, no code blocks):
+{
+  "questionKey": "<one of: problem_statement, target_users, core_features, constraints, success_criteria, timeline>",
+  "questionText": "<the actual question to ask the team>",
+  "reasoning": "<1 sentence on why this question is important>"
+}
+```
+
+**Expected Output Format:**
+```json
+{
+  "questionKey": "problem_statement",
+  "questionText": "What specific pain point does your budget gamification app solve that existing expense trackers don't address?",
+  "reasoning": "Understanding the unique problem helps differentiate the solution from existing apps"
+}
+```
+
+**Example Usage:**
+- **Triggered:** During Stage PRD after a winning idea is selected
+- **Location:** `src/HackMatchAgent.ts:1236` - `askNextPRDQuestion()` method
+- **Model:** `@cf/meta/llama-3.1-8b-instruct`
+
+---
+
+## 9. PRD Document Generation Prompt
+
+**Purpose:** Synthesizes all 6 Q&A responses into a comprehensive Product Requirements Document.
+
+**Input Variables:**
+- `winningIdea` - The selected project
+- `qaList` - Array of all 6 question-answer pairs
+- `hackathonSetup` - Team size, time available, primary track, rules
+- `techStack` - Optional recommended tech stack
+
+**Prompt Template:**
+```
+You are a technical product manager creating a comprehensive PRD for a hackathon project.
+
+Project: {winningIdea.title}
+Description: {winningIdea.description}
+
+Hackathon Context:
+- Team Size: {teamSize} people
+- Time Available: {timeHours} hours
+- Primary Track: {primaryTrack}
+- Rules: {rulesText if provided}
+
+Team's Answers to PRD Questions:
+Q: {question1}
+A: {answer1}
+
+Q: {question2}
+A: {answer2}
+[... all 6 Q&A pairs ...]
+
+Recommended Tech Stack:
+- Frontend: {frontend}
+- Backend: {backend}
+- Database: {database}
+- Deployment: {deployment}
+
+Synthesize all this information into a comprehensive PRD document.
+
+The PRD should be:
+- Clear and actionable
+- Realistic for the hackathon timeframe
+- Aligned with the team's answers
+- Professional but concise
+
+Respond in valid JSON format (no markdown, no code blocks):
+{
+  "problemStatement": "<2-3 sentences describing the problem>",
+  "solutionOverview": "<2-3 sentences describing the solution>",
+  "targetUsers": "<1-2 sentences describing who will use this>",
+  "keyFeatures": ["<feature1>", "<feature2>", "<feature3>"],
+  "technicalApproach": "<2-3 sentences on how it will be built>",
+  "successMetrics": ["<metric1>", "<metric2>"],
+  "timeline": {
+    "phase1": "<hours X-Y: what to build>",
+    "phase2": "<hours Y-Z: what to build>",
+    "phase3": "<hours Z-end: what to build>"
+  }
+}
+```
+
+**Expected Output Format:**
+```json
+{
+  "problemStatement": "College students struggle to stick to budgets because traditional expense trackers are boring and lack motivation. There's no reward system for good financial behavior.",
+  "solutionOverview": "Budget Battle Royale gamifies expense tracking by awarding XP for staying under budget, creating a competitive multiplayer experience where users level up by making smart financial choices.",
+  "targetUsers": "College students aged 18-24 who want to manage money better but find traditional budgeting apps too tedious.",
+  "keyFeatures": [
+    "Manual expense entry with category selection",
+    "XP system that rewards staying under budget",
+    "Budget dashboard showing spending vs. limits",
+    "User authentication and profile"
+  ],
+  "technicalApproach": "React frontend with Vite for fast development, Express.js backend with MongoDB for flexible data storage, deployed on Vercel (frontend) and Railway (backend).",
+  "successMetrics": [
+    "Users can track expenses and see budget status within 2 clicks",
+    "XP system correctly awards points for under-budget behavior",
+    "App loads in under 2 seconds"
+  ],
+  "timeline": {
+    "phase1": "Hours 0-8: Set up React project, Express backend, MongoDB schema, basic auth",
+    "phase2": "Hours 8-18: Build expense entry, budget tracking, XP calculation logic",
+    "phase3": "Hours 18-24: Integration, testing, deployment, polish"
+  }
+}
+```
+
+**Example Usage:**
+- **Triggered:** After all 6 PRD questions are answered
+- **Location:** `src/HackMatchAgent.ts:1394` - `generateFinalPRD()` method
+- **Model:** `@cf/meta/llama-3.1-8b-instruct`
 
 ---
 
@@ -468,14 +631,15 @@ The following existing prompts have been enhanced to consider team experience le
 
 ## AI Model Configuration
 
-**Model Used:** `@cf/meta/llama-3.3-70b-instruct`
+**Model Used:** `@cf/meta/llama-3.1-8b-instruct`
 
 **Rationale for Model Choice:**
-- More capable than previous 3.1 model for complex reasoning
-- Better at following JSON formatting instructions
+- Fast inference time for real-time hackathon workflow
+- Good balance between capability and cost
+- Excellent at following JSON formatting instructions
 - Available on Cloudflare Workers AI
-- Handles JSON output reliably
-- Improved quality for experience-aware recommendations
+- Handles complex reasoning tasks reliably
+- 8B parameter size provides quality output while maintaining speed
 
 **Common Parameters:**
 ```typescript
@@ -505,6 +669,24 @@ The following existing prompts have been enhanced to consider team experience le
 
 ---
 
+## Summary
+
+This document includes **9 comprehensive AI prompts** that power the HackMatch platform:
+
+1. **Feasibility Scoring** - Evaluates if ideas can be built in time
+2. **Idea Combination** - Merges two ideas creatively
+3. **Tech Stack Suggestion** - Recommends appropriate technologies
+4. **Work Distribution** - Assigns tasks to team members
+5. **MVP Feature Prioritization** - Categorizes features into must/nice/out-of-scope
+6. **Track Validation** - Validates hackathon track selections
+7. **Role Allocation** - Assigns team roles based on skills
+8. **PRD Question Generation** - Creates contextual questions for PRD (6 questions total)
+9. **PRD Document Generation** - Synthesizes Q&A into final PRD
+
+All prompts follow strict JSON output formatting and are optimized for the Llama 3.1-8b-instruct model on Workers AI.
+
+---
+
 ## Future Enhancements
 
 Potential additional prompts for Phase 2:
@@ -521,4 +703,4 @@ All prompts in this document are original work created for the cf_ai_hackmatch p
 
 **AI Model:** Cloudflare Workers AI - Llama 3.1 8B Instruct
 **Platform:** Cloudflare Workers with Durable Objects
-**Framework:** RAPID (Review, All Ideas, Prioritize, Identify MVP, Decide)
+**Framework:** RAPID (Review, All Ideas, Prioritize, PRD, Identify MVP, Decide)
