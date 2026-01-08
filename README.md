@@ -6,22 +6,6 @@ AI-Powered RAPID Brainstorming Platform for Hackathon Teams
 
 HackMatch guides hackathon teams through the proven RAPID framework, helping them go from idea chaos to clear MVP in 30 minutes instead of 3-5 hours of unstructured brainstorming.
 
-### RAPID Framework (6 Stages)
-
-1. **Review** (3 min): Select hackathon challenges to focus on
-2. **All Ideas** (10 min): Silent brainstorming → group sharing with AI combinations
-3. **Prioritize** (5 min): Score ideas on feasibility with AI-powered objective scoring
-4. **PRD** (7 min): AI-guided 6-question Product Requirements Document creation
-5. **Identify MVP** (5 min): Drag features into Must/Nice/Out of Scope, AI suggests tech stack
-6. **Decide** (2 min): Final vote and export project summary
-
-## Technology Stack
-
-- **Backend**: Cloudflare Workers + Durable Objects
-- **AI**: Workers AI (Llama 3.1-8b-instruct)
-- **Frontend**: Standalone HTML/JavaScript (no framework)
-- **Database**: SQLite in Durable Objects (13 tables)
-- **Real-time**: WebSocket (via Durable Objects API)
 
 ## Setup Instructions
 
@@ -134,42 +118,21 @@ Then open http://localhost:8080 in your browser.
 
 **Note:** When testing locally, the WebSocket will connect to `localhost:8788` (the wrangler dev server).
 
-## Features
+### RAPID Framework (6 Stages)
 
-✅ Team member profiles with skills & experience
-✅ AI-powered track validation
-✅ Experience-aware recommendations
-✅ Role allocation suggestions (Frontend, Backend, Database, Design)
-✅ Complexity adjustment based on team experience
-✅ Real-time collaboration (WebSocket)
-✅ AI-powered idea scoring
-✅ Structured RAPID workflow
-✅ Export project summary
-✅ Works on desktop and mobile
+1. **Review** (3 min): Select hackathon challenges to focus on
+2. **All Ideas** (10 min): Silent brainstorming → group sharing with AI combinations
+3. **Prioritize** (5 min): Score ideas on feasibility with AI-powered objective scoring
+4. **PRD** (7 min): AI-guided 6-question Product Requirements Document creation
+5. **Identify MVP** (5 min): Drag features into Must/Nice/Out of Scope, AI suggests tech stack
+6. **Decide** (2 min): Final vote and export project summary
 
-## Cloudflare Requirements Met
+## Technology Stack
 
-- ✅ LLM: Workers AI (Llama 3.1-8b-instruct)
-- ✅ Workflow: Cloudflare Workers + Durable Objects
-- ✅ User Input: Chat + idea submission forms + team profiles
-- ✅ Memory/State: SQLite in Durable Objects
-- ✅ Repository prefix: cf_ai_
-- ✅ Documentation: README.md (this file)
-- ✅ AI Prompts: See [PROMPTS.md](PROMPTS.md)
-
-## Architecture
-
-The application uses the **Cloudflare Agent SDK** which provides:
-- Built-in WebSocket management
-- Automatic state synchronization
-- @callable() decorators for client-invokable methods
-- Direct SQL database access
-- Integrated Workers AI binding
-
-## Contributing
+- **Backend**: Cloudflare Workers + Durable Objects
+- **AI**: Workers AI (Llama 3.1-8b-instruct)
+- **Frontend**: Standalone HTML/JavaScript (no framework)
+- **Database**: SQLite in Durable Objects (13 tables)
+- **Real-time**: WebSocket (via Durable Objects API)
 
 This project was built for the Cloudflare AI assignment. See [PROMPTS.md](PROMPTS.md) for all AI prompts used in development.
-
-## License
-
-ISC
