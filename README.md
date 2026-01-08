@@ -6,6 +6,17 @@ AI-Powered RAPID Brainstorming Platform for Hackathon Teams
 
 HackMatch guides hackathon teams through the proven RAPID framework, helping them go from idea chaos to clear MVP in 30 minutes instead of 3-5 hours of unstructured brainstorming.
 
+Option 1 - Just use the deployed link (EASIEST):
+✅https://main.hackmatch.pages.dev/ 
+
+
+Option 2 - Run locally (REQUIRES CLOUDFLARE ACCOUNT):
+
+wrangler login      # ← MISSING from instructions!
+npm install
+npm run dev
+npx serve public -p 8080
+
 ## Quick Start (3 Steps)
 
 ```bash
