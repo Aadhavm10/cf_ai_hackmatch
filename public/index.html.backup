@@ -1,0 +1,1271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HackMatch - AI-Powered RAPID Brainstorming</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      padding: 20px;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      background: white;
+      border-radius: 16px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+      overflow: hidden;
+    }
+
+    header {
+      background: #1a1a2e;
+      color: white;
+      padding: 30px;
+      text-align: center;
+      position: relative;
+    }
+
+    h1 {
+      font-size: 2.5em;
+      margin-bottom: 10px;
+    }
+
+    .tagline {
+      color: #a0aec0;
+      font-size: 1.1em;
+    }
+
+    .rapid-progress {
+      display: flex;
+      justify-content: space-around;
+      padding: 20px;
+      background: #f7fafc;
+      border-bottom: 2px solid #e2e8f0;
+    }
+
+    .stage {
+      text-align: center;
+      padding: 10px 20px;
+      border-radius: 8px;
+      transition: all 0.3s;
+    }
+
+    .stage.active {
+      background: #667eea;
+      color: white;
+      transform: scale(1.1);
+    }
+
+    .stage.completed {
+      background: #48bb78;
+      color: white;
+    }
+
+    .content {
+      display: grid;
+      grid-template-columns: 2fr 1fr;
+      gap: 20px;
+      padding: 30px;
+    }
+
+    .main-area {
+      background: #f7fafc;
+      padding: 20px;
+      border-radius: 8px;
+    }
+
+    .sidebar {
+      background: #edf2f7;
+      padding: 20px;
+      border-radius: 8px;
+    }
+
+    h2 {
+      margin-bottom: 20px;
+      color: #2d3748;
+    }
+
+    input, textarea, button {
+      width: 100%;
+      padding: 12px;
+      margin-bottom: 10px;
+      border: 2px solid #e2e8f0;
+      border-radius: 8px;
+      font-size: 1em;
+    }
+
+    button {
+      background: #667eea;
+      color: white;
+      border: none;
+      cursor: pointer;
+      font-weight: 600;
+      transition: background 0.3s;
+    }
+
+    button:hover {
+      background: #5a67d8;
+    }
+
+    button:disabled {
+      background: #cbd5e0;
+      cursor: not-allowed;
+    }
+
+    .idea-card, .message {
+      background: white;
+      padding: 15px;
+      margin-bottom: 10px;
+      border-radius: 8px;
+      border-left: 4px solid #667eea;
+    }
+
+    .message {
+      border-left-color: #48bb78;
+    }
+
+    .ai-suggestion {
+      background: #fff5f5;
+      border-left-color: #f56565;
+    }
+
+    .status {
+      text-align: center;
+      padding: 10px;
+      background: #edf2f7;
+      border-radius: 8px;
+      margin-bottom: 20px;
+    }
+
+    .connected { color: #48bb78; }
+    .disconnected { color: #f56565; }
+
+    .ideas-list, .chat-messages {
+      max-height: 400px;
+      overflow-y: auto;
+    }
+
+    small {
+      color: #718096;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>HackMatch</h1>
+      <p class="tagline">AI-Powered RAPID Brainstorming Platform</p>
+      <button onclick="resetToStageR()" style="position: absolute; top: 20px; right: 20px; background: #718096; padding: 8px 16px; font-size: 0.9em;">Reset to Stage R</button>
+    </header>
+
+    <div class="rapid-progress">
+      <div class="stage" data-stage="R">
+        <strong>R</strong><br>Review
+      </div>
+      <div class="stage" data-stage="A">
+        <strong>A</strong><br>Ideas
+      </div>
+      <div class="stage" data-stage="P">
+        <strong>P</strong><br>Prioritize
+      </div>
+      <div class="stage" data-stage="PRD">
+        <strong>PRD</strong><br>Build PRD
+      </div>
+      <div class="stage" data-stage="D">
+        <strong>D</strong><br>Download
+      </div>
+    </div>
+
+    <div id="setup" style="padding: 30px; text-align: center;">
+      <h2>Join or Create a Room</h2>
+      <input type="text" id="roomId" placeholder="Enter room ID (leave empty to create new)" />
+      <input type="text" id="userName" placeholder="Your name" required />
+      <button onclick="joinRoom()">Join Room</button>
+      <div class="status">
+        <span id="status" class="disconnected">Not connected</span>
+      </div>
+    </div>
+
+    <div id="app" style="display: none;">
+      <div class="content">
+        <div class="main-area">
+          <h2 id="stageTitle">Current Stage</h2>
+          <div id="stageContent"></div>
+        </div>
+
+        <div class="sidebar">
+          <h2>Team Chat</h2>
+          <div class="chat-messages" id="chatMessages"></div>
+          <input type="text" id="chatInput" placeholder="Type a message..." onkeypress="if(event.key==='Enter') sendMessage()" />
+          <button onclick="sendMessage()">Send</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Backend configuration - automatically detect local vs production
+    const IS_LOCAL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    const BACKEND_URL = IS_LOCAL
+      ? 'http://localhost:8788'
+      : 'https://cf_ai_hackmatch.aadhavmanimurugan.workers.dev';
+    const WS_URL = IS_LOCAL
+      ? 'ws://localhost:8788'
+      : 'wss://cf_ai_hackmatch.aadhavmanimurugan.workers.dev';
+
+    console.log('Using WebSocket URL:', WS_URL);
+
+    let ws = null;
+    let currentStage = 'R';
+    let roomId = '';
+    let userId = Math.random().toString(36).substr(2, 9);
+    let userName = '';
+
+    async function joinRoom() {
+      const roomInput = document.getElementById('roomId').value.trim();
+      const nameInput = document.getElementById('userName').value.trim();
+
+      if (!nameInput) {
+        alert('Please enter your name');
+        return;
+      }
+
+      userName = nameInput;
+
+      // Create room if no ID provided
+      if (!roomInput) {
+        const res = await fetch(`${BACKEND_URL}/api/create-room`, { method: 'POST' });
+        const data = await res.json();
+        roomId = data.roomId;
+      } else {
+        roomId = roomInput;
+      }
+
+      connectWebSocket();
+    }
+
+    function connectWebSocket() {
+      const wsUrl = `${WS_URL}/api/room/${roomId}`;
+
+      ws = new WebSocket(wsUrl);
+
+      ws.onopen = () => {
+        document.getElementById('status').textContent = `Connected to room: ${roomId}`;
+        document.getElementById('status').className = 'connected';
+        document.getElementById('setup').style.display = 'none';
+        document.getElementById('app').style.display = 'block';
+        updateStageUI();
+      };
+
+      ws.onmessage = (event) => {
+        const msg = JSON.parse(event.data);
+        console.log('Received message:', msg);
+        handleMessage(msg);
+      };
+
+      ws.onclose = () => {
+        document.getElementById('status').textContent = 'Disconnected';
+        document.getElementById('status').className = 'disconnected';
+      };
+
+      ws.onerror = (error) => {
+        console.error('WebSocket error:', error);
+        alert('Connection error. Please try again.');
+      };
+    }
+
+    function handleMessage(msg) {
+      switch (msg.type) {
+        case 'initialState':
+          console.log('[FRONTEND] Received initialState');
+          currentStage = msg.payload.currentStage;
+
+          // Store ideas globally for use in other stages
+          window.currentIdeas = msg.payload.ideas || [];
+
+          updateStageProgress();
+          updateStageUI();  // Render UI first - this creates the empty divs
+
+          // NOW append ideas and messages (after UI is rendered)
+          if (msg.payload.ideas) {
+            console.log('[FRONTEND] Loading', msg.payload.ideas.length, 'ideas');
+            msg.payload.ideas.forEach(idea => displayIdea(idea));
+          }
+          if (msg.payload.messages) {
+            console.log('[FRONTEND] Loading', msg.payload.messages.length, 'messages');
+            msg.payload.messages.forEach(m => displayMessage(m));
+          }
+          break;
+
+        case 'message':
+          displayMessage(msg.payload);
+          break;
+
+        case 'idea':
+          displayIdea(msg.payload);
+          // Add to global ideas array so it persists across stages
+          if (!window.currentIdeas) {
+            window.currentIdeas = [];
+          }
+          // Only add if not already present (avoid duplicates)
+          if (!window.currentIdeas.find(i => i.id === msg.payload.id)) {
+            window.currentIdeas.push(msg.payload);
+            console.log('[FRONTEND] Added idea to currentIdeas. Total:', window.currentIdeas.length);
+          }
+          break;
+
+        case 'aiSuggestion':
+          displayAISuggestion(msg.payload);
+          break;
+
+        case 'stateUpdate':
+          console.log('[FRONTEND] Received stateUpdate:', msg.payload);
+          if (msg.payload.currentStage) {
+            console.log('[FRONTEND] Updating stage from', currentStage, 'to', msg.payload.currentStage);
+
+            // Re-enable the button if it exists (from previous stage)
+            const btn = document.getElementById('startBrainstormBtn');
+            if (btn) {
+              btn.disabled = false;
+              btn.textContent = 'Start Brainstorming →';
+            }
+
+            currentStage = msg.payload.currentStage;
+
+            // Update ideas if included in payload (important for Stage P and beyond)
+            if (msg.payload.ideas) {
+              console.log('[FRONTEND] Updating ideas from stateUpdate:', msg.payload.ideas.length, 'ideas');
+              window.currentIdeas = msg.payload.ideas;
+            }
+
+            updateStageProgress();
+            updateStageUI();
+
+            console.log('[FRONTEND] Stage transition complete, now at:', currentStage);
+          }
+          break;
+
+        case 'setupSaved':
+          console.log('[FRONTEND] Hackathon setup saved');
+          // Auto-transition to Stage A handled by backend
+          break;
+
+        case 'aiScore':
+          console.log('[FRONTEND] Received AI score for idea', msg.payload.ideaId);
+          displayAIScore(msg.payload.ideaId, msg.payload.data);
+          break;
+
+        case 'prdQuestion':
+          console.log('[FRONTEND] Received PRD question');
+          displayPRDQuestion(msg.payload);
+          break;
+
+        case 'prdAnswerReceived':
+          console.log('[FRONTEND] PRD answer received');
+          // Question UI will be updated when next question arrives
+          break;
+
+        case 'prdComplete':
+          console.log('[FRONTEND] PRD generation complete');
+          console.log('[FRONTEND] PRD Document:', msg.payload.prdDocument);
+          window.currentPRD = msg.payload.prdDocument;
+
+          // Update to Stage D
+          if (msg.payload.currentStage === 'D') {
+            console.log('[FRONTEND] Updating to Stage D to display PRD');
+            currentStage = 'D';
+            updateStageProgress();
+            updateStageUI();
+          }
+          break;
+
+        case 'error':
+          console.error('Server error:', msg.payload);
+          alert(`Error: ${msg.payload.message}\n\nDetails: ${msg.payload.details || 'No details available'}`);
+          break;
+      }
+    }
+
+    function updateStageProgress() {
+      const stages = document.querySelectorAll('.stage');
+      const stageOrder = ['R', 'A', 'P', 'PRD', 'D'];
+      const currentIndex = stageOrder.indexOf(currentStage);
+
+      stages.forEach((stage, index) => {
+        stage.classList.remove('active', 'completed');
+        if (index < currentIndex) {
+          stage.classList.add('completed');
+        } else if (index === currentIndex) {
+          stage.classList.add('active');
+        }
+      });
+    }
+
+    function updateStageUI() {
+      const content = document.getElementById('stageContent');
+      const titles = {
+        'R': 'Review - Hackathon Setup',
+        'A': 'All Ideas Welcome',
+        'P': 'Prioritize with AI',
+        'PRD': 'Build Your PRD',
+        'D': 'Download PRD'
+      };
+
+      document.getElementById('stageTitle').textContent = titles[currentStage];
+
+      if (currentStage === 'R') {
+        content.innerHTML = `
+          <h3>Welcome to HackMatch PRD Generator!</h3>
+          <p>Let's gather your hackathon details to generate a comprehensive PRD.</p>
+
+          <div style="background: #f7fafc; padding: 20px; border-radius: 8px; margin: 20px 0;">
+            <h4>New Workflow:</h4>
+            <ul style="margin-top: 10px; line-height: 1.8;">
+              <li><strong>Review</strong> - Enter hackathon details</li>
+              <li><strong>All Ideas</strong> - Team brainstorms ideas</li>
+              <li><strong>Prioritize</strong> - AI rates all ideas, team picks winner</li>
+              <li><strong>Build PRD</strong> - AI asks 6 questions to create comprehensive PRD</li>
+              <li><strong>Download</strong> - Get your PRD as Markdown file</li>
+            </ul>
+          </div>
+
+          <div style="background: white; padding: 20px; border-radius: 8px; border: 2px solid #667eea; margin: 20px 0;">
+            <h4>Hackathon Setup</h4>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin: 15px 0;">
+              <div>
+                <label style="display: block; margin-bottom: 5px; font-weight: 600;">Team Size</label>
+                <input type="number" id="teamSize" value="4" min="1" max="10" style="width: 100%; padding: 10px; border: 2px solid #e2e8f0; border-radius: 8px;" />
+              </div>
+              <div>
+                <label style="display: block; margin-bottom: 5px; font-weight: 600;">Time Available (hours)</label>
+                <input type="number" id="timeHours" value="24" min="1" max="72" style="width: 100%; padding: 10px; border: 2px solid #e2e8f0; border-radius: 8px;" />
+              </div>
+            </div>
+
+            <div style="margin: 15px 0;">
+              <label style="display: block; margin-bottom: 5px; font-weight: 600;">Hackathon Rules & Constraints</label>
+              <textarea id="hackathonRules" placeholder="E.g., Must use specific API, submission deadline, judging criteria..." rows="3" style="width: 100%; padding: 10px; border: 2px solid #e2e8f0; border-radius: 8px;"></textarea>
+            </div>
+
+            <div style="margin: 15px 0;">
+              <label style="display: block; margin-bottom: 5px; font-weight: 600;">Sponsor Name (Optional)</label>
+              <input type="text" id="sponsorName" placeholder="E.g., Cloudflare, Google, Microsoft..." style="width: 100%; padding: 10px; border: 2px solid #e2e8f0; border-radius: 8px;" />
+            </div>
+
+            <div style="margin: 15px 0;">
+              <label style="display: block; margin-bottom: 5px; font-weight: 600;">Sponsor Details (Optional)</label>
+              <textarea id="sponsorDetails" placeholder="E.g., Prize amount, special requirements..." rows="2" style="width: 100%; padding: 10px; border: 2px solid #e2e8f0; border-radius: 8px;"></textarea>
+            </div>
+
+            <div style="margin: 15px 0;">
+              <label style="display: block; margin-bottom: 5px; font-weight: 600;">Primary Track/Challenge</label>
+              <select id="primaryTrack" style="width: 100%; padding: 10px; border: 2px solid #e2e8f0; border-radius: 8px; font-size: 1em;">
+                <option value="">Select a track...</option>
+                <option value="Best Use of AI">Best Use of AI</option>
+                <option value="Social Impact">Social Impact</option>
+                <option value="Best Design">Best Design</option>
+                <option value="Most Innovative">Most Innovative</option>
+                <option value="Best Hardware Hack">Best Hardware Hack</option>
+                <option value="Sustainability">Sustainability</option>
+                <option value="Education">Education</option>
+                <option value="Healthcare">Healthcare</option>
+                <option value="FinTech">FinTech</option>
+                <option value="Gaming">Gaming</option>
+                <option value="Open Track">Open Track</option>
+                <option value="Other">Other (specify in chat)</option>
+              </select>
+            </div>
+
+            <p style="margin-top: 15px; color: #718096; font-size: 0.9em;">
+              💡 Tip: This information will help AI tailor the PRD to your specific hackathon!
+            </p>
+          </div>
+
+          <button id="startBrainstormBtn" onclick="saveHackathonSetup()" style="margin-top: 20px; font-size: 1.1em; padding: 15px 30px; background: #667eea; color: white; border: none; border-radius: 8px; cursor: pointer;">Save & Start Brainstorming →</button>
+        `;
+      } else if (currentStage === 'A') {
+        content.innerHTML = `
+          <h3>Submit Your Ideas</h3>
+          <input type="text" id="ideaTitle" placeholder="Idea title" style="width: 100%; padding: 10px; margin: 10px 0; border: 2px solid #e2e8f0; border-radius: 8px; font-size: 1em;" />
+          <textarea id="ideaDescription" placeholder="Describe your idea..." rows="4" style="width: 100%; padding: 10px; margin: 10px 0; border: 2px solid #e2e8f0; border-radius: 8px; font-size: 1em;"></textarea>
+          <button onclick="submitIdea()">Submit Idea</button>
+          <h3 style="margin-top: 30px;">Team Ideas</h3>
+          <div class="ideas-list" id="ideasList"></div>
+          <button onclick="nextStage()" style="margin-top: 20px;">Next: Prioritize Ideas →</button>
+        `;
+      } else if (currentStage === 'P') {
+        content.innerHTML = `
+          <h3>Prioritize Ideas with AI</h3>
+          <p>Review your team's ideas below. When ready, click the button to get AI feasibility scores, then select the winning idea!</p>
+
+          <div class="ideas-list" id="ideasList" style="margin: 20px 0;"></div>
+
+          <button onclick="requestAIScoring()" style="background: #805ad5; color: white; padding: 15px 30px; border: none; border-radius: 8px; cursor: pointer; font-size: 1.1em; margin: 20px 0;">
+            🤖 Get AI Feasibility Scores
+          </button>
+
+          <div id="aiScoringStatus" style="display: none; background: #f0f4ff; padding: 15px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #667eea;">
+            <strong>⏳ AI is scoring ideas...</strong>
+            <p style="margin-top: 5px; color: #718096;">Please wait while AI evaluates feasibility, risks, and recommendations for each idea.</p>
+          </div>
+        `;
+        loadIdeasWithAIScores();
+      } else if (currentStage === 'PRD') {
+        content.innerHTML = `
+          <h3>Building Your PRD</h3>
+          <p>AI will ask 6 targeted questions to create a comprehensive Product Requirements Document.</p>
+
+          <div id="prdProgress" style="background: #f0f4ff; padding: 15px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #667eea;">
+            <strong>Question <span id="currentQuestionNum">1</span> of 6</strong>
+          </div>
+
+          <div id="previousQA" style="margin: 20px 0;"></div>
+
+          <div id="currentQuestion" style="background: white; padding: 20px; border-radius: 8px; border: 2px solid #667eea; margin: 20px 0;">
+            <div id="questionLoading" style="text-align: center; padding: 20px;">
+              <strong>⏳ AI is preparing your first question...</strong>
+            </div>
+            <div id="questionContent" style="display: none;">
+              <h4 style="color: #667eea; margin-bottom: 15px;">Question:</h4>
+              <p id="questionText" style="font-size: 1.1em; line-height: 1.6; margin-bottom: 20px;"></p>
+              <textarea id="answerInput" placeholder="Type your answer here..." rows="5" style="width: 100%; padding: 12px; border: 2px solid #e2e8f0; border-radius: 8px; font-size: 1em;"></textarea>
+              <button onclick="submitPRDAnswer()" style="margin-top: 15px; background: #667eea; color: white; padding: 12px 24px; border: none; border-radius: 8px; cursor: pointer; font-size: 1em;">Submit Answer</button>
+            </div>
+          </div>
+
+          <div id="prdComplete" style="display: none; background: #f0fff4; padding: 20px; border-radius: 8px; border: 2px solid #48bb78; margin: 20px 0;">
+            <h4 style="color: #48bb78;">✅ PRD Generation Complete!</h4>
+            <p style="margin-top: 10px;">All questions answered. Generating your comprehensive PRD...</p>
+          </div>
+        `;
+      } else if (currentStage === 'D') {
+        content.innerHTML = `
+          <h3>Your Product Requirements Document</h3>
+          <p>Here's your comprehensive PRD! Review it and download as Markdown.</p>
+
+          <div id="prdPreview" style="background: #f7fafc; padding: 25px; border-radius: 8px; margin: 20px 0; border: 2px solid #667eea; font-family: 'Georgia', serif;">
+            <div style="text-align: center; padding: 40px;">
+              <strong>⏳ Loading your PRD...</strong>
+            </div>
+          </div>
+
+          <div style="display: flex; gap: 10px; margin-top: 20px;">
+            <button onclick="downloadPRD()" style="background: #48bb78; color: white; padding: 15px 30px; border: none; border-radius: 8px; cursor: pointer; font-size: 1.1em; flex: 1;">
+              📥 Download PRD (Markdown)
+            </button>
+            <button onclick="startOver()" style="background: #718096; color: white; padding: 15px 30px; border: none; border-radius: 8px; cursor: pointer; font-size: 1.1em;">
+              🔄 Start New Session
+            </button>
+          </div>
+
+          <div style="background: #fff5f5; padding: 20px; border-radius: 8px; margin-top: 20px; border-left: 4px solid #f56565;">
+            <h4 style="color: #c53030;">Need to make changes?</h4>
+            <p style="margin-top: 10px; color: #742a2a;">Use the team chat to discuss refinements, then click the button below to regenerate the PRD with updated answers.</p>
+            <button onclick="regeneratePRD()" style="margin-top: 15px; background: #e53e3e; color: white; padding: 10px 20px; border: none; border-radius: 8px; cursor: pointer;">
+              🔁 Regenerate PRD
+            </button>
+          </div>
+        `;
+        loadPRDDocument();
+      }
+    }
+
+    function submitIdea() {
+      const title = document.getElementById('ideaTitle').value.trim();
+      const description = document.getElementById('ideaDescription').value.trim();
+
+      if (!title || !description) {
+        alert('Please fill in both title and description');
+        return;
+      }
+
+      ws.send(JSON.stringify({
+        type: 'submitIdea',
+        payload: {
+          userId,
+          userName,
+          title,
+          description,
+          phase: 'group'
+        }
+      }));
+
+      document.getElementById('ideaTitle').value = '';
+      document.getElementById('ideaDescription').value = '';
+    }
+
+    function displayIdea(idea) {
+      const list = document.getElementById('ideasList');
+      if (!list) return;
+
+      const card = document.createElement('div');
+      card.className = 'idea-card';
+      card.innerHTML = `
+        <strong>${idea.title}</strong>
+        <p>${idea.description}</p>
+        <small>by ${idea.userName}</small>
+      `;
+      list.appendChild(card);
+    }
+
+    function loadIdeasForScoring() {
+      const list = document.getElementById('ideasList');
+      if (!list) return;
+
+      console.log('[FRONTEND] Loading ideas for scoring. Total ideas:', window.currentIdeas ? window.currentIdeas.length : 0);
+
+      // Get ideas from global state
+      if (window.currentIdeas && window.currentIdeas.length > 0) {
+        window.currentIdeas.forEach(idea => {
+          const card = document.createElement('div');
+          card.className = 'idea-card';
+          card.innerHTML = `
+            <strong>${idea.title}</strong>
+            <p>${idea.description}</p>
+            <small>by ${idea.userName}</small>
+            <div class="scoring" style="margin-top: 10px;">
+              <strong>Your Score:</strong>
+              <button onclick="scoreIdea(${idea.id}, 1)" style="padding: 5px 10px; margin: 2px;">⭐</button>
+              <button onclick="scoreIdea(${idea.id}, 2)" style="padding: 5px 10px; margin: 2px;">⭐⭐</button>
+              <button onclick="scoreIdea(${idea.id}, 3)" style="padding: 5px 10px; margin: 2px;">⭐⭐⭐</button>
+              <button onclick="scoreIdea(${idea.id}, 4)" style="padding: 5px 10px; margin: 2px;">⭐⭐⭐⭐</button>
+              <button onclick="scoreIdea(${idea.id}, 5)" style="padding: 5px 10px; margin: 2px;">⭐⭐⭐⭐⭐</button>
+            </div>
+            <div id="score-${idea.id}" style="margin-top: 5px; font-weight: bold; color: #48bb78;"></div>
+          `;
+          list.appendChild(card);
+        });
+      } else {
+        list.innerHTML = '<p style="color: #718096;">No ideas submitted yet. Go back to Stage A to add ideas!</p>';
+      }
+    }
+
+    function displayAISuggestion(suggestion) {
+      const list = document.getElementById('ideasList');
+      if (!list) return;
+
+      const card = document.createElement('div');
+      card.className = 'idea-card ai-suggestion';
+      card.innerHTML = `
+        <strong>AI Suggestion: ${suggestion.type}</strong>
+        <pre>${JSON.stringify(suggestion.data, null, 2)}</pre>
+      `;
+      list.appendChild(card);
+    }
+
+    function scoreIdea(ideaId, score) {
+      console.log('[FRONTEND] Scoring idea', ideaId, 'with score', score);
+
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({
+          type: 'scoreIdea',
+          payload: {
+            userId,
+            ideaId,
+            criterion: 'feasibility',
+            score
+          }
+        }));
+
+        // Update UI immediately
+        const scoreDiv = document.getElementById(`score-${ideaId}`);
+        if (scoreDiv) {
+          scoreDiv.textContent = `✓ Your score: ${score}/5`;
+        }
+      } else {
+        alert('Not connected to server. Please refresh.');
+      }
+    }
+
+    function requestAIScoring() {
+      console.log('[FRONTEND] Requesting AI scoring for all ideas');
+
+      if (!window.currentIdeas || window.currentIdeas.length === 0) {
+        alert('No ideas to score! Please submit ideas in Stage A first.');
+        return;
+      }
+
+      if (!ws || ws.readyState !== WebSocket.OPEN) {
+        alert('Not connected to server. Please refresh.');
+        return;
+      }
+
+      // Show loading status
+      const statusDiv = document.getElementById('aiScoringStatus');
+      if (statusDiv) {
+        statusDiv.style.display = 'block';
+      }
+
+      // Hide the button
+      const buttons = document.querySelectorAll('button');
+      buttons.forEach(btn => {
+        if (btn.textContent.includes('Get AI Feasibility Scores')) {
+          btn.style.display = 'none';
+        }
+      });
+
+      // Send single request to score all ideas
+      console.log('[FRONTEND] Sending requestAIScoring message');
+      ws.send(JSON.stringify({
+        type: 'requestAIScoring'
+      }));
+    }
+
+    function sendMessage() {
+      const input = document.getElementById('chatInput');
+      const content = input.value.trim();
+
+      if (!content) return;
+
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        console.log('Sending message:', content);
+        ws.send(JSON.stringify({
+          type: 'sendMessage',
+          payload: {
+            userId,
+            userName,
+            content
+          }
+        }));
+
+        input.value = '';
+      } else {
+        alert('Not connected to server. Please refresh.');
+      }
+    }
+
+    function displayMessage(msg) {
+      const messages = document.getElementById('chatMessages');
+      if (!messages) return;
+
+      const div = document.createElement('div');
+      div.className = 'message';
+      div.innerHTML = `
+        <strong>${msg.userName}</strong>
+        <p style="white-space: pre-wrap;">${msg.content}</p>
+      `;
+      messages.appendChild(div);
+      messages.scrollTop = messages.scrollHeight;
+    }
+
+    function saveHackathonSetup() {
+      console.log('[FRONTEND] saveHackathonSetup called');
+
+      // Get form values
+      const teamSize = parseInt(document.getElementById('teamSize').value);
+      const timeHours = parseInt(document.getElementById('timeHours').value);
+      const rulesText = document.getElementById('hackathonRules').value.trim();
+      const sponsorName = document.getElementById('sponsorName').value.trim();
+      const sponsorDetails = document.getElementById('sponsorDetails').value.trim();
+      const primaryTrack = document.getElementById('primaryTrack').value;
+
+      // Validate required fields
+      if (!teamSize || teamSize < 1) {
+        alert('Please enter a valid team size');
+        return;
+      }
+      if (!timeHours || timeHours < 1) {
+        alert('Please enter valid time hours');
+        return;
+      }
+      if (!primaryTrack) {
+        alert('Please select a primary track');
+        return;
+      }
+
+      // Disable button
+      const btn = document.getElementById('startBrainstormBtn');
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Saving...';
+      }
+
+      // Check WebSocket connection
+      if (!ws || ws.readyState !== WebSocket.OPEN) {
+        alert('Not connected to server. Please refresh and try again.');
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = 'Save & Start Brainstorming →';
+        }
+        return;
+      }
+
+      // Send hackathon setup to backend
+      console.log('[FRONTEND] Sending saveHackathonSetup message');
+      ws.send(JSON.stringify({
+        type: 'saveHackathonSetup',
+        payload: {
+          teamSize,
+          timeHours,
+          rulesText,
+          sponsorName,
+          sponsorDetails,
+          primaryTrack
+        }
+      }));
+
+      // Send context as a message for team chat
+      const contextMessage = `📋 Hackathon Setup:\n• Team Size: ${teamSize}\n• Time: ${timeHours} hours\n• Track: ${primaryTrack}\n• Rules: ${rulesText || 'None specified'}\n${sponsorName ? `• Sponsor: ${sponsorName}` : ''}`;
+      ws.send(JSON.stringify({
+        type: 'sendMessage',
+        payload: {
+          userId,
+          userName: 'System',
+          content: contextMessage
+        }
+      }));
+
+      // Transition to Stage A
+      console.log('[FRONTEND] Sending transitionStage message');
+      ws.send(JSON.stringify({
+        type: 'transitionStage'
+      }));
+    }
+
+    function nextStage() {
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        console.log('Transitioning to next stage from:', currentStage);
+        ws.send(JSON.stringify({
+          type: 'transitionStage'
+        }));
+      } else {
+        alert('Not connected to server. Please refresh.');
+      }
+    }
+
+    function resetToStageR() {
+      if (confirm('Are you sure you want to reset to Stage R? This will not delete your data.')) {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({
+            type: 'resetToStageR'
+          }));
+        } else {
+          alert('Not connected to server. Please refresh.');
+        }
+      }
+    }
+
+    function exportSummary() {
+      let ideasText = '';
+      if (window.currentIdeas && window.currentIdeas.length > 0) {
+        ideasText = window.currentIdeas.map((idea, index) =>
+          `${index + 1}. ${idea.title}
+   Description: ${idea.description}
+   Submitted by: ${idea.userName}
+`
+        ).join('\n');
+      } else {
+        ideasText = 'No ideas submitted yet.';
+      }
+
+      const summary = `HackMatch Session Summary
+========================
+Room ID: ${roomId}
+Date: ${new Date().toLocaleDateString()}
+Time: ${new Date().toLocaleTimeString()}
+
+Team Members: ${userName} (and others in the room)
+
+Ideas Generated (${window.currentIdeas ? window.currentIdeas.length : 0} total):
+${ideasText}
+
+Next Steps:
+1. Set up your development environment
+2. Create a GitHub repository
+3. Divide tasks among team members
+4. Start building your MVP!
+
+Generated by HackMatch - AI-Powered RAPID Brainstorming
+https://github.com/Aadhavm10/cf_ai_hackmatch
+`;
+
+      const blob = new Blob([summary], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `hackmatch-summary-${Date.now()}.txt`;
+      a.click();
+      URL.revokeObjectURL(url);
+
+      console.log('[FRONTEND] Exported summary with', window.currentIdeas ? window.currentIdeas.length : 0, 'ideas');
+    }
+
+    function startOver() {
+      if (confirm('Start a new brainstorming session? This will create a new room.')) {
+        window.location.reload();
+      }
+    }
+
+    // ===== NEW PRD GENERATOR FUNCTIONS =====
+
+    function loadIdeasWithAIScores() {
+      console.log('[FRONTEND] Loading ideas with AI scores');
+      // Ideas will be displayed when AI scores arrive via WebSocket
+      // Show existing ideas immediately
+      if (window.currentIdeas && window.currentIdeas.length > 0) {
+        const list = document.getElementById('ideasList');
+        if (list) {
+          list.innerHTML = '';
+          window.currentIdeas.forEach(idea => {
+            const card = document.createElement('div');
+            card.className = 'idea-card';
+            card.id = `idea-${idea.id}`;
+            card.innerHTML = `
+              <strong>${idea.title}</strong>
+              <p>${idea.description}</p>
+              <small>By ${idea.userName}</small>
+              <div id="aiScore-${idea.id}" style="margin-top: 10px; padding: 10px; background: #f0f4ff; border-radius: 6px; display: none;">
+                <p style="margin: 5px 0;"><strong>AI Feasibility Score:</strong> <span id="score-${idea.id}"></span>/5</p>
+                <p style="margin: 5px 0; font-size: 0.9em;" id="reasoning-${idea.id}"></p>
+              </div>
+              <button id="selectBtn-${idea.id}" onclick="selectWinningIdea(${idea.id})" style="margin-top: 10px; background: #48bb78; color: white; padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer; display: none;">
+                ✓ Select This Idea & Build PRD
+              </button>
+            `;
+            list.appendChild(card);
+          });
+        }
+      }
+    }
+
+    function displayAIScore(ideaId, scoreData) {
+      console.log('[FRONTEND] Displaying AI score for idea', ideaId, scoreData);
+
+      const scoreDiv = document.getElementById(`aiScore-${ideaId}`);
+      const scoreSpan = document.getElementById(`score-${ideaId}`);
+      const reasoningP = document.getElementById(`reasoning-${ideaId}`);
+      const selectBtn = document.getElementById(`selectBtn-${ideaId}`);
+
+      if (scoreDiv && scoreSpan && reasoningP) {
+        scoreSpan.textContent = scoreData.score;
+        reasoningP.textContent = scoreData.reasoning;
+        scoreDiv.style.display = 'block';
+
+        if (selectBtn) {
+          selectBtn.style.display = 'block';
+        }
+      }
+
+      // Check if all ideas have been scored
+      const allIdeas = window.currentIdeas || [];
+      const scoredIdeas = allIdeas.filter(idea => {
+        const div = document.getElementById(`aiScore-${idea.id}`);
+        return div && div.style.display !== 'none';
+      });
+
+      if (scoredIdeas.length === allIdeas.length && allIdeas.length > 0) {
+        // All ideas scored - hide loading message
+        const statusDiv = document.getElementById('aiScoringStatus');
+        if (statusDiv) {
+          statusDiv.innerHTML = `
+            <strong>✅ AI Scoring Complete!</strong>
+            <p style="margin-top: 5px; color: #718096;">Review the scores and select your winning idea to proceed.</p>
+          `;
+          statusDiv.style.borderColor = '#48bb78';
+          statusDiv.style.background = '#f0fff4';
+        }
+      }
+    }
+
+    function selectWinningIdea(ideaId) {
+      console.log('[FRONTEND] Selecting winning idea:', ideaId);
+
+      if (!ws || ws.readyState !== WebSocket.OPEN) {
+        alert('Not connected to server. Please refresh.');
+        return;
+      }
+
+      if (confirm('Select this idea and proceed to build the PRD?')) {
+        ws.send(JSON.stringify({
+          type: 'selectWinningIdea',
+          payload: { ideaId }
+        }));
+      }
+    }
+
+    // Store current question ID
+    window.currentPRDQuestionId = null;
+
+    function displayPRDQuestion(questionData) {
+      console.log('[FRONTEND] Displaying PRD question:', questionData);
+
+      window.currentPRDQuestionId = questionData.id;
+
+      const questionNum = document.getElementById('currentQuestionNum');
+      const questionLoading = document.getElementById('questionLoading');
+      const questionContent = document.getElementById('questionContent');
+      const questionText = document.getElementById('questionText');
+      const answerInput = document.getElementById('answerInput');
+
+      if (questionNum) questionNum.textContent = questionData.sortOrder || '?';
+      if (questionLoading) questionLoading.style.display = 'none';
+      if (questionContent) questionContent.style.display = 'block';
+      if (questionText) questionText.textContent = questionData.questionText;
+      if (answerInput) answerInput.value = '';
+
+      // Store previous answers
+      if (!window.prdAnswers) window.prdAnswers = [];
+    }
+
+    function submitPRDAnswer() {
+      const answerInput = document.getElementById('answerInput');
+      const answerText = answerInput ? answerInput.value.trim() : '';
+
+      if (!answerText) {
+        alert('Please provide an answer');
+        return;
+      }
+
+      if (!window.currentPRDQuestionId) {
+        alert('No active question');
+        return;
+      }
+
+      if (!ws || ws.readyState !== WebSocket.OPEN) {
+        alert('Not connected to server. Please refresh.');
+        return;
+      }
+
+      console.log('[FRONTEND] Submitting PRD answer');
+      ws.send(JSON.stringify({
+        type: 'answerPRDQuestion',
+        payload: {
+          questionId: window.currentPRDQuestionId,
+          answerText
+        }
+      }));
+
+      // Add to previous Q&A
+      const previousQA = document.getElementById('previousQA');
+      if (previousQA) {
+        const qaCard = document.createElement('div');
+        qaCard.style.cssText = 'background: #edf2f7; padding: 15px; border-radius: 8px; margin-bottom: 15px;';
+        qaCard.innerHTML = `
+          <p style="font-size: 0.9em; color: #718096; margin-bottom: 8px;">Q${window.prdAnswers.length + 1}:</p>
+          <p style="margin-bottom: 12px;">${document.getElementById('questionText').textContent}</p>
+          <p style="font-size: 0.9em; color: #718096; margin-bottom: 5px;">Your Answer:</p>
+          <p style="font-style: italic;">${answerText}</p>
+        `;
+        previousQA.appendChild(qaCard);
+      }
+
+      // Store answer locally
+      if (!window.prdAnswers) window.prdAnswers = [];
+      window.prdAnswers.push(answerText);
+
+      // Show loading state
+      const questionContent = document.getElementById('questionContent');
+      const questionLoading = document.getElementById('questionLoading');
+      if (questionContent) questionContent.style.display = 'none';
+      if (questionLoading) {
+        questionLoading.style.display = 'block';
+        questionLoading.innerHTML = '<strong>⏳ Generating next question...</strong>';
+      }
+    }
+
+    function loadPRDDocument() {
+      console.log('[FRONTEND] Loading PRD document');
+
+      // PRD will be in window.currentPRD from the prdComplete message
+      if (window.currentPRD) {
+        displayPRDPreview(window.currentPRD);
+      } else {
+        // Try to fetch from backend if not in memory
+        console.log('[FRONTEND] No PRD in memory, waiting for WebSocket...');
+      }
+    }
+
+    function displayPRDPreview(prd) {
+      console.log('[FRONTEND] Displaying PRD preview:', prd);
+
+      const preview = document.getElementById('prdPreview');
+      if (!preview) return;
+
+      let coreFeatures = [];
+      let successCriteria = [];
+      let techStack = {};
+      let timeline = {};
+
+      try {
+        coreFeatures = prd.core_features ? JSON.parse(prd.core_features) : [];
+      } catch (e) {
+        coreFeatures = [];
+      }
+
+      try {
+        successCriteria = prd.success_criteria ? JSON.parse(prd.success_criteria) : [];
+      } catch (e) {
+        successCriteria = [];
+      }
+
+      try {
+        techStack = prd.tech_stack ? JSON.parse(prd.tech_stack) : {};
+      } catch (e) {
+        techStack = {};
+      }
+
+      try {
+        timeline = prd.timeline ? JSON.parse(prd.timeline) : {};
+      } catch (e) {
+        timeline = {};
+      }
+
+      preview.innerHTML = `
+        <h2 style="color: #667eea; border-bottom: 3px solid #667eea; padding-bottom: 10px; margin-bottom: 20px;">Product Requirements Document</h2>
+
+        <h3 style="color: #2d3748; margin-top: 25px;">Problem Statement</h3>
+        <p style="line-height: 1.8;">${prd.problem_statement || 'N/A'}</p>
+
+        <h3 style="color: #2d3748; margin-top: 25px;">Solution Overview</h3>
+        <p style="line-height: 1.8;">${prd.solution_overview || 'N/A'}</p>
+
+        <h3 style="color: #2d3748; margin-top: 25px;">Target Users</h3>
+        <p style="line-height: 1.8;">${prd.target_users || 'N/A'}</p>
+
+        <h3 style="color: #2d3748; margin-top: 25px;">Core Features</h3>
+        <ul style="line-height: 1.8; margin-left: 20px;">
+          ${coreFeatures.map(f => `<li>${f}</li>`).join('')}
+        </ul>
+
+        <h3 style="color: #2d3748; margin-top: 25px;">Tech Stack</h3>
+        <ul style="line-height: 1.8; margin-left: 20px;">
+          <li><strong>Frontend:</strong> ${techStack.frontend || 'N/A'}</li>
+          <li><strong>Backend:</strong> ${techStack.backend || 'N/A'}</li>
+          <li><strong>Database:</strong> ${techStack.database || 'N/A'}</li>
+          <li><strong>Deployment:</strong> ${techStack.deployment || 'N/A'}</li>
+        </ul>
+        <p style="margin-top: 10px; font-style: italic; color: #718096;">${techStack.reasoning || ''}</p>
+
+        <h3 style="color: #2d3748; margin-top: 25px;">Timeline</h3>
+        <ul style="line-height: 1.8; margin-left: 20px;">
+          ${timeline.phase1 ? `<li><strong>Phase 1:</strong> ${timeline.phase1}</li>` : ''}
+          ${timeline.phase2 ? `<li><strong>Phase 2:</strong> ${timeline.phase2}</li>` : ''}
+          ${timeline.phase3 ? `<li><strong>Phase 3:</strong> ${timeline.phase3}</li>` : ''}
+          ${timeline.buffer ? `<li><strong>Buffer:</strong> ${timeline.buffer}</li>` : ''}
+        </ul>
+
+        <h3 style="color: #2d3748; margin-top: 25px;">Success Criteria</h3>
+        <ul style="line-height: 1.8; margin-left: 20px;">
+          ${successCriteria.map(c => `<li>${c}</li>`).join('')}
+        </ul>
+
+        ${prd.constraints ? `
+          <h3 style="color: #2d3748; margin-top: 25px;">Constraints</h3>
+          <p style="line-height: 1.8;">${prd.constraints}</p>
+        ` : ''}
+
+        <p style="margin-top: 30px; text-align: center; color: #a0aec0; font-size: 0.9em;">
+          Generated by HackMatch PRD Generator<br/>
+          ${new Date().toLocaleString()}
+        </p>
+      `;
+    }
+
+    function downloadPRD() {
+      console.log('[FRONTEND] Downloading PRD');
+
+      if (!window.currentPRD) {
+        alert('No PRD available to download');
+        return;
+      }
+
+      const prd = window.currentPRD;
+
+      let coreFeatures = [];
+      let successCriteria = [];
+      let techStack = {};
+      let timeline = {};
+
+      try {
+        coreFeatures = prd.core_features ? JSON.parse(prd.core_features) : [];
+        successCriteria = prd.success_criteria ? JSON.parse(prd.success_criteria) : [];
+        techStack = prd.tech_stack ? JSON.parse(prd.tech_stack) : {};
+        timeline = prd.timeline ? JSON.parse(prd.timeline) : {};
+      } catch (e) {
+        console.error('Error parsing PRD JSON:', e);
+      }
+
+      const markdown = `# Product Requirements Document
+
+## Problem Statement
+
+${prd.problem_statement || 'N/A'}
+
+## Solution Overview
+
+${prd.solution_overview || 'N/A'}
+
+## Target Users
+
+${prd.target_users || 'N/A'}
+
+## Core Features
+
+${coreFeatures.map((f, i) => `${i + 1}. ${f}`).join('\n')}
+
+## Tech Stack
+
+- **Frontend:** ${techStack.frontend || 'N/A'}
+- **Backend:** ${techStack.backend || 'N/A'}
+- **Database:** ${techStack.database || 'N/A'}
+- **Deployment:** ${techStack.deployment || 'N/A'}
+
+**Reasoning:** ${techStack.reasoning || 'N/A'}
+
+## Timeline
+
+${timeline.phase1 ? `- **Phase 1:** ${timeline.phase1}` : ''}
+${timeline.phase2 ? `- **Phase 2:** ${timeline.phase2}` : ''}
+${timeline.phase3 ? `- **Phase 3:** ${timeline.phase3}` : ''}
+${timeline.buffer ? `- **Buffer:** ${timeline.buffer}` : ''}
+
+## Success Criteria
+
+${successCriteria.map((c, i) => `${i + 1}. ${c}`).join('\n')}
+
+${prd.constraints ? `## Constraints\n\n${prd.constraints}` : ''}
+
+---
+*Generated by HackMatch PRD Generator*
+*${new Date().toLocaleString()}*
+`;
+
+      const blob = new Blob([markdown], { type: 'text/markdown' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `PRD-${Date.now()}.md`;
+      a.click();
+      URL.revokeObjectURL(url);
+
+      console.log('[FRONTEND] PRD downloaded');
+    }
+
+    function regeneratePRD() {
+      if (!ws || ws.readyState !== WebSocket.OPEN) {
+        alert('Not connected to server. Please refresh.');
+        return;
+      }
+
+      if (confirm('Regenerate the PRD? This will use your previous answers.')) {
+        console.log('[FRONTEND] Requesting PRD regeneration');
+        ws.send(JSON.stringify({
+          type: 'regeneratePRD'
+        }));
+
+        const preview = document.getElementById('prdPreview');
+        if (preview) {
+          preview.innerHTML = '<div style="text-align: center; padding: 40px;"><strong>⏳ Regenerating PRD...</strong></div>';
+        }
+      }
+    }
+  </script>
+</body>
+</html>

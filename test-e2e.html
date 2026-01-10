@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>HackMatch E2E Test</title>
+  <style>
+    body { font-family: monospace; padding: 20px; background: #1a1a1a; color: #0f0; }
+    .log { margin: 5px 0; padding: 5px; background: #000; border-left: 3px solid #0f0; }
+    .error { border-left-color: #f00; color: #f00; }
+    .success { border-left-color: #0f0; color: #0f0; }
+    .info { border-left-color: #00f; color: #0ff; }
+    button { background: #0f0; color: #000; border: none; padding: 10px 20px; margin: 10px 5px; cursor: pointer; }
+    button:disabled { background: #555; color: #888; cursor: not-allowed; }
+  </style>
+</head>
+<body>
+  <h1>HackMatch End-to-End Test</h1>
+  <div>
+    <button onclick="runFullTest()">Run Full Test</button>
+    <button onclick="clearLogs()">Clear Logs</button>
+  </div>
+  <div id="logs"></div>
+
+  <script>
+    const BACKEND_URL = 'https://cf_ai_hackmatch.aadhavmanimurugan.workers.dev';
+    const WS_URL = 'wss://cf_ai_hackmatch.aadhavmanimurugan.workers.dev';
+
+    let ws = null;
+    let roomId = '';
+    let userId = Math.random().toString(36).substr(2, 9);
+    let ideaId = null;
+
+    function log(message, type = 'info') {
+      const div = document.createElement('div');
+      div.className = `log ${type}`;
+      div.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+      document.getElementById('logs').appendChild(div);
+      document.getElementById('logs').scrollTop = document.getElementById('logs').scrollHeight;
+    }
+
+    function clearLogs() {
+      document.getElementById('logs').innerHTML = '';
+    }
+
+    async function sleep(ms) {
+      return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    async function createRoom() {
+      log('Creating room...', 'info');
+      const res = await fetch(`${BACKEND_URL}/api/create-room`, { method: 'POST' });
+      const data = await res.json();
+      roomId = data.roomId;
+      log(`✓ Room created: ${roomId}`, 'success');
+      return roomId;
+    }
+
+    async function connectWebSocket() {
+      return new Promise((resolve, reject) => {
+        log(`Connecting to WebSocket: ${WS_URL}/api/room/${roomId}`, 'info');
+        ws = new WebSocket(`${WS_URL}/api/room/${roomId}`);
+
+        ws.onopen = () => {
+          log('✓ WebSocket connected', 'success');
+          resolve();
+        };
+
+        ws.onerror = (error) => {
+          log(`✗ WebSocket error: ${error}`, 'error');
+          reject(error);
+        };
+
+        ws.onmessage = (event) => {
+          const msg = JSON.parse(event.data);
+          log(`← Received: ${msg.type}`, 'info');
+
+          if (msg.type === 'idea') {
+            ideaId = msg.payload.id;
+            log(`  Idea ID: ${ideaId}`, 'info');
+          }
+
+          if (msg.type === 'aiScore') {
+            log(`  ✓ AI Score received for idea ${msg.payload.ideaId}`, 'success');
+            log(`    Score: ${msg.payload.data.score}/5`, 'success');
+            log(`    Reasoning: ${msg.payload.data.reasoning}`, 'info');
+          }
+
+          if (msg.type === 'error') {
+            log(`  ✗ Server error: ${msg.payload.message}`, 'error');
+            if (msg.payload.details) {
+              log(`    Details: ${msg.payload.details}`, 'error');
+            }
+          }
+
+          if (msg.type === 'stateUpdate') {
+            log(`  Stage updated to: ${msg.payload.currentStage}`, 'success');
+          }
+        };
+
+        ws.onclose = () => {
+          log('WebSocket closed', 'info');
+        };
+
+        setTimeout(() => reject(new Error('Connection timeout')), 10000);
+      });
+    }
+
+    function sendMessage(type, payload) {
+      log(`→ Sending: ${type}`, 'info');
+      ws.send(JSON.stringify({ type, payload }));
+    }
+
+    async function saveHackathonSetup() {
+      log('Saving hackathon setup...', 'info');
+      sendMessage('saveHackathonSetup', {
+        teamSize: 4,
+        timeHours: 24,
+        rulesText: 'Test hackathon rules',
+        sponsorName: 'Test Sponsor',
+        sponsorDetails: 'Test details',
+        primaryTrack: 'Best Use of AI'
+      });
+      await sleep(1000);
+      log('✓ Setup saved', 'success');
+    }
+
+    async function transitionToStageA() {
+      log('Transitioning to Stage A...', 'info');
+      sendMessage('transitionStage', {});
+      await sleep(1000);
+      log('✓ Transitioned to Stage A', 'success');
+    }
+
+    async function submitIdea() {
+      log('Submitting idea...', 'info');
+      sendMessage('submitIdea', {
+        userId: userId,
+        userName: 'Test User',
+        title: 'AI-Powered Code Review Assistant',
+        description: 'An automated code review tool that uses AI to detect bugs, suggest improvements, and enforce coding standards in real-time.',
+        phase: 'group'
+      });
+      await sleep(1000);
+      if (ideaId) {
+        log(`✓ Idea submitted with ID: ${ideaId}`, 'success');
+      }
+    }
+
+    async function transitionToStageP() {
+      log('Transitioning to Stage P...', 'info');
+      sendMessage('transitionStage', {});
+      await sleep(1000);
+      log('✓ Transitioned to Stage P', 'success');
+    }
+
+    async function requestAIScoring() {
+      log('Requesting AI scoring...', 'info');
+      log('⏳ This may take 10-30 seconds...', 'info');
+      sendMessage('requestAIScoring', {});
+      // Wait for AI response (can take a while)
+      await sleep(30000);
+    }
+
+    async function runFullTest() {
+      clearLogs();
+      log('=== STARTING FULL E2E TEST ===', 'info');
+
+      try {
+        // Step 1: Create room
+        await createRoom();
+        await sleep(500);
+
+        // Step 2: Connect WebSocket
+        await connectWebSocket();
+        await sleep(1000);
+
+        // Step 3: Save hackathon setup
+        await saveHackathonSetup();
+        await sleep(1000);
+
+        // Step 4: Transition to Stage A
+        await transitionToStageA();
+        await sleep(1000);
+
+        // Step 5: Submit an idea
+        await submitIdea();
+        await sleep(2000);
+
+        // Step 6: Transition to Stage P
+        await transitionToStageP();
+        await sleep(2000);
+
+        // Step 7: Request AI scoring
+        await requestAIScoring();
+
+        log('=== TEST COMPLETED ===', 'success');
+        log('Check logs above for AI score results', 'info');
+
+      } catch (error) {
+        log(`=== TEST FAILED ===`, 'error');
+        log(`Error: ${error.message}`, 'error');
+        console.error(error);
+      }
+    }
+  </script>
+</body>
+</html>
