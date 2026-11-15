@@ -4,18 +4,18 @@ AI-Powered RAPID Brainstorming Platform for Hackathon Teams
 
 ## Overview
 
-HackMatch guides hackathon teams through the proven RAPID framework, helping them go from idea chaos to clear MVP in 30 minutes instead of 3-5 hours of unstructured brainstorming.
+HackMatch guides hackathon teams through the proven RAPID framework, helping them go from idea chaos to a clear MVP.
 
-Option 1 - Just use the deployed link (EASIEST):
-✅https://main.hackmatch.pages.dev/ 
+**Try it:** https://main.hackmatch.pages.dev/
 
+**Run locally** (requires a Cloudflare account):
 
-Option 2 - Run locally (REQUIRES CLOUDFLARE ACCOUNT):
-
-wrangler login      # ← MISSING from instructions!
+```bash
+npx wrangler login
 npm install
 npm run dev
 npx serve public -p 8080
+```
 
 ## Quick Start (3 Steps)
 
@@ -44,7 +44,7 @@ Then open http://localhost:8080 in your browser!
 
 1. **Clone and Install**:
    ```bash
-   git clone <your-repo-url>
+   git clone https://github.com/Aadhavm10/cf_ai_hackmatch.git
    cd cf_ai_hackmatch
    npm install
    ```
@@ -88,8 +88,8 @@ Then open http://localhost:8080 in your browser!
 cf_ai_hackmatch/
 ├── src/
 │   ├── index.ts              # Worker entry point
-│   ├── HackMatchAgent.ts     # Main Durable Object (1,551 lines)
-│   ├── schema.sql            # SQLite database schema (13 tables)
+│   ├── HackMatchAgent.ts     # Main Durable Object
+│   ├── schema.sql            # SQLite database schema
 │   ├── ai/
 │   │   ├── client.ts         # Workers AI integration
 │   │   └── prompts.ts        # AI prompt templates
@@ -97,7 +97,9 @@ cf_ai_hackmatch/
 │       ├── rapid.ts          # RAPID workflow types
 │       └── room.ts           # Room state types
 ├── public/
-│   └── index.html            # Frontend (standalone HTML/JS, 1,269 lines)
+│   ├── index.html            # Frontend page (no framework)
+│   ├── css/                  # Styles
+│   └── js/                   # Frontend scripts
 ├── wrangler.toml             # Cloudflare Workers config
 ├── package.json
 ├── README.md                 # This file
@@ -173,7 +175,7 @@ Then open http://localhost:8080 in your browser.
 - **Backend**: Cloudflare Workers + Durable Objects
 - **AI**: Workers AI (Llama 3.1-8b-instruct)
 - **Frontend**: Standalone HTML/JavaScript (no framework)
-- **Database**: SQLite in Durable Objects (13 tables)
+- **Database**: SQLite in Durable Objects (12 tables)
 - **Real-time**: WebSocket (via Durable Objects API)
 
 This project was built for the Cloudflare AI assignment. See [PROMPTS.md](PROMPTS.md) for all AI prompts used in development.
